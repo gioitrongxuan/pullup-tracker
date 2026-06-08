@@ -684,8 +684,8 @@ function updateAISection() {
 
     if (!currentUser) {
         idle.innerHTML = 'Đăng nhập để sử dụng tính năng phân tích AI';
-    } else if (sessions.length < 3) {
-        idle.innerHTML = 'Cần ít nhất <strong>3 buổi tập</strong> để phân tích. Hãy tập thêm nhé!';
+    } else if (sessions.length < 1) {
+        idle.innerHTML = 'Chưa có buổi tập nào. Hãy hoàn thành buổi tập đầu tiên!';
     } else {
         idle.innerHTML = 'Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn';
     }
@@ -694,9 +694,9 @@ function updateAISection() {
 }
 
 async function analyzeWithAI() {
-    showToast(`debug: user=${!!currentUser} sessions=${sessions.length}`);
+    console.log('analyzeWithAI called', { currentUser, sessions: sessions.length, supabaseClient: !!supabaseClient });
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
-    if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
+    if (sessions.length < 1) { showToast('Chưa có buổi tập nào để phân tích'); return; }
 
     const btn      = document.getElementById('btnAnalyze');
     const idleEl   = document.getElementById('aiIdle');
