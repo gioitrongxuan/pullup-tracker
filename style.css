@@ -614,18 +614,12 @@ body {
 .toast.show { transform: translateX(-50%) translateY(0); }
 
 /* ===== AI SECTION ===== */
-.ai-section {
-    margin-top: 36px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 22px 24px;
-}
+.ai-section { margin-top: 36px; }
 .ai-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
 }
 .ai-title { font-size: 1.05rem; font-weight: 700; }
 
@@ -646,11 +640,18 @@ body {
 .btn-ai-analyze:hover { background: var(--accent-mid); }
 .btn-ai-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.ai-body {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+}
+
 .ai-idle {
     font-size: 0.88rem;
     color: var(--text-dim);
     text-align: center;
-    padding: 20px 0;
+    padding: 12px 0;
 }
 .ai-idle strong { color: var(--text-mid); }
 
