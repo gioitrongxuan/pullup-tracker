@@ -24,8 +24,9 @@ let isRunning     = false;
 let repCount      = 0;
 let sessionStart  = 0;
 let timerInterval = null;
-let pullPhase     = null;     // null | 'DOWN' | 'UP'
-let posBuffer     = [];       // smoothing ring buffer
+let pullPhase        = null;  // null | 'DOWN' | 'UP'
+let seenDownBeforeUp = false; // must hang DOWN before UP counts
+let posBuffer        = [];    // smoothing ring buffer
 
 let poseInst   = null;        // MediaPipe Pose instance
 let mpCam      = null;        // MediaPipe Camera instance
@@ -140,8 +141,13 @@ function onPoseResults(lms) {
         const prev = pullPhase;
         pullPhase = detectedPhase;
 
-        if (isRunning && prev === 'UP' && detectedPhase === 'DOWN') {
+        if (prev === 'DOWN' && detectedPhase === 'UP') {
+            seenDownBeforeUp = true;
+        }
+
+        if (isRunning && prev === 'UP' && detectedPhase === 'DOWN' && seenDownBeforeUp) {
             countRep();
+            seenDownBeforeUp = false;
         }
 
         if (isRunning) setCounterPhase(pullPhase);
@@ -347,9 +353,10 @@ function stopCamera() {
 // ===== WORKOUT SESSION =====
 
 function startWorkout() {
-    repCount     = 0;
-    pullPhase    = null;
-    posBuffer    = [];
+    repCount        = 0;
+    pullPhase       = null;
+    seenDownBeforeUp = false;
+    posBuffer       = [];
     isRunning    = true;
     sessionStart = Date.now();
 
