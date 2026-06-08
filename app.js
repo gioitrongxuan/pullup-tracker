@@ -578,6 +578,7 @@ function updateAuthUI() {
         headerUser.style.display = 'none';
         btnLogin.style.display   = '';
     }
+    updateAISection();
 }
 
 function openLoginModal() {
@@ -695,7 +696,7 @@ function updateAISection() {
 
 async function analyzeWithAI() {
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
-    if (sessions.length < 3) return;
+    if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
 
     const btn = document.getElementById('btnAnalyze');
     btn.disabled = true;
