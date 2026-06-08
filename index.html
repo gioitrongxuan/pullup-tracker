@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Kéo Xà – Đếm số lần kéo xà tự động bằng camera AI">
+    <title>Kéo Xà – AI Counter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💪</text></svg>">
+    <!-- Auth & DB -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <!-- MediaPipe Pose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<div class="app">
+
+    <!-- ===== HEADER ===== -->
+    <header class="header">
+        <div class="header-inner">
+            <div class="header-left">
+                <span class="logo-icon">💪</span>
+                <h1 class="logo-text">Kéo Xà</h1>
+                <span class="logo-badge">AI</span>
+            </div>
+            <div class="header-right">
+                <div class="header-user" id="headerUser" style="display:none">
+                    <img class="header-avatar" id="headerAvatar" src="" alt="avatar">
+                    <span class="header-username" id="headerUsername"></span>
+                </div>
+                <button class="btn-login-header" id="btnLoginHeader">Đăng nhập</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main">
+
+        <!-- Workout Layout -->
+        <div class="workout-layout">
+
+            <!-- Camera Section -->
+            <div class="camera-section">
+                <div class="camera-wrap" id="cameraWrap">
+                    <video id="inputVideo" autoplay playsinline muted></video>
+                    <canvas id="outputCanvas"></canvas>
+
+                    <!-- Placeholder when camera off -->
+                    <div class="camera-placeholder" id="cameraPlaceholder">
+                        <div class="cam-icon">📷</div>
+                        <p class="cam-title">Camera chưa bật</p>
+                        <p class="cam-sub">Nhấn <strong>Bắt đầu</strong> để bật camera và AI theo dõi chuyển động</p>
+                    </div>
+
+                    <!-- Pose detection status -->
+                    <div class="pose-status" id="poseStatus" style="display:none">
+                        <div class="pose-dot" id="poseDot"></div>
+                        <span id="poseStatusText">Đang tìm kiếm...</span>
+                    </div>
+
+                    <!-- Phase overlay (UP / DOWN) -->
+                    <div class="phase-overlay" id="phaseOverlay" style="display:none">
+                        <span id="phaseOverlayText">↓</span>
+                    </div>
+
+                    <!-- +1 flash on rep -->
+                    <div class="rep-flash" id="repFlash">+1</div>
+                </div>
+
+                <!-- Live tip bar -->
+                <div class="camera-tip-bar" id="cameraTipBar" style="display:none">
+                    <span class="tip-dot"></span>
+                    <span id="tipText">Đứng để camera thấy toàn thân</span>
+                </div>
+            </div>
+
+            <!-- Workout Panel -->
+            <div class="workout-panel">
+
+                <!-- Counter -->
+                <div class="counter-card">
+                    <div class="counter-label">LẦN KÉO XÀ</div>
+                    <div class="counter-value" id="repCount">0</div>
+                    <div class="counter-phase" id="counterPhase">Chưa bắt đầu</div>
+                </div>
+
+                <!-- Timer -->
+                <div class="timer-card" id="timerCard" style="visibility:hidden">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span id="timerDisplay">00:00</span>
+                </div>
+
+                <!-- Controls -->
+                <div class="controls-block">
+                    <button class="btn-start" id="btnStart">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Bắt đầu
+                    </button>
+                    <button class="btn-stop" id="btnStop" style="display:none">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                        Kết thúc & Lưu
+                    </button>
+                </div>
+
+                <!-- Instructions -->
+                <div class="instructions-card" id="instructionsCard">
+                    <div class="inst-title">Hướng dẫn</div>
+                    <ol class="inst-list">
+                        <li>Đặt camera cách bạn 2–3 mét</li>
+                        <li>Điều chỉnh góc để thấy <strong>toàn thân</strong></li>
+                        <li>Leo lên xà, tay nắm thanh</li>
+                        <li>Kéo lên cho đến khi <strong>cằm qua xà</strong></li>
+                        <li>Thả xuống = 1 lần được đếm</li>
+                    </ol>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div class="history-section">
+            <div class="history-header">
+                <h2 class="history-title">Lịch sử tập luyện</h2>
+                <span class="history-count" id="historyCount"></span>
+            </div>
+
+            <div id="historyList">
+                <div class="history-empty" id="historyEmpty">
+                    <div class="empty-icon">🏋️</div>
+                    <p>Chưa có buổi tập nào được lưu</p>
+                    <p class="empty-sub">Đăng nhập và hoàn thành bài tập đầu tiên!</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== LOGIN MODAL ===== -->
+<div class="modal-overlay" id="loginOverlay" role="dialog" aria-modal="true">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Đăng nhập</h2>
+            <button class="modal-close" id="btnLoginClose" aria-label="Đóng">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <p class="modal-desc">Đăng nhập để lưu lịch sử tập luyện và xem trên nhiều thiết bị</p>
+        <div class="google-btn-wrap" id="googleSignInBtn"></div>
+        <button class="btn-text-muted" id="btnLoginSkip">Tiếp tục không đăng nhập</button>
+    </div>
+</div>
+
+<!-- ===== SAVE MODAL ===== -->
+<div class="modal-overlay" id="saveOverlay" role="dialog" aria-modal="true">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>🎉 Hoàn thành buổi tập!</h2>
+        </div>
+        <div class="save-result">
+            <div class="save-big" id="saveReps">0</div>
+            <div class="save-big-label">lần kéo xà</div>
+            <div class="save-duration" id="saveDuration">0:00</div>
+            <div class="save-duration-label">thời gian</div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-muted" id="btnSaveDiscard">Bỏ qua</button>
+            <button class="btn-accent" id="btnSaveConfirm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Lưu kết quả
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PROFILE MODAL ===== -->
+<div class="modal-overlay" id="profileOverlay" role="dialog" aria-modal="true">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Tài khoản</h2>
+            <button class="modal-close" id="btnProfileClose" aria-label="Đóng">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="profile-info">
+            <img class="profile-avatar" id="profileAvatar" src="" alt="">
+            <div class="profile-name" id="profileName"></div>
+            <div class="profile-email" id="profileEmail"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-muted" id="btnProfileCancel">Đóng</button>
+            <button class="btn-danger" id="btnSignOut">Đăng xuất</button>
+        </div>
+    </div>
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
