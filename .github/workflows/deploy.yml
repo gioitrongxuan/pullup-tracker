@@ -3,7 +3,7 @@ name: Deploy to S3
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -25,24 +25,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ secrets.AWS_REGION }}
 
-      # Upload assets (CSS/JS) with long-lived cache
+      # Inject git SHA into HTML so browsers always fetch the new JS/CSS
+      - name: Inject build version
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          sed -i "s/BUILD_VERSION/$SHA/g" index.html
+
+      # Upload CSS/JS with long-lived cache (cache-busted via ?v=SHA in HTML)
       - name: Upload static assets
         run: |
           aws s3 sync . s3://${{ secrets.S3_BUCKET }} \
             --exclude "*" \
             --include "*.css" \
             --include "*.js" \
-            --cache-control "public,max-age=31536000,immutable" \
-            --delete
+            --cache-control "public,max-age=31536000,immutable"
 
-      # Upload HTML with no-cache so users always get latest
+      # Upload HTML with no-cache — always serves latest, carries new ?v= param
       - name: Upload HTML
         run: |
           aws s3 cp index.html s3://${{ secrets.S3_BUCKET }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate" \
             --content-type "text/html; charset=utf-8"
 
-      # Invalidate CloudFront cache (only if CLOUDFRONT_ID secret is set)
+      # Invalidate CloudFront (only if CLOUDFRONT_ID is set)
       - name: Invalidate CloudFront
         if: env.CLOUDFRONT_ID != ''
         run: |
