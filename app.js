@@ -694,6 +694,7 @@ function updateAISection() {
 }
 
 async function analyzeWithAI() {
+    showToast(`debug: user=${!!currentUser} sessions=${sessions.length}`);
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
     if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
 
