@@ -684,14 +684,13 @@ function updateAISection() {
 
     if (!currentUser) {
         idle.innerHTML = 'Đăng nhập để sử dụng tính năng phân tích AI';
-        document.getElementById('btnAnalyze').disabled = true;
     } else if (sessions.length < 3) {
         idle.innerHTML = 'Cần ít nhất <strong>3 buổi tập</strong> để phân tích. Hãy tập thêm nhé!';
-        document.getElementById('btnAnalyze').disabled = true;
     } else {
         idle.innerHTML = 'Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn';
-        document.getElementById('btnAnalyze').disabled = false;
     }
+
+    document.getElementById('btnAnalyze').disabled = !currentUser;
 }
 
 async function analyzeWithAI() {
