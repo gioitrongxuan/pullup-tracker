@@ -678,14 +678,16 @@ renderHistory();
 const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 function updateAISection() {
-    const section = document.getElementById('aiSection');
-    section.style.display = currentUser ? '' : 'none';
-
     const idle = document.getElementById('aiIdle');
-    if (idle && sessions.length < 3) {
+    if (!idle) return;
+
+    if (!currentUser) {
+        idle.innerHTML = 'Đăng nhập để sử dụng tính năng phân tích AI';
+        document.getElementById('btnAnalyze').disabled = true;
+    } else if (sessions.length < 3) {
         idle.innerHTML = 'Cần ít nhất <strong>3 buổi tập</strong> để phân tích. Hãy tập thêm nhé!';
         document.getElementById('btnAnalyze').disabled = true;
-    } else if (idle) {
+    } else {
         idle.innerHTML = 'Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn';
         document.getElementById('btnAnalyze').disabled = false;
     }
