@@ -1,0 +1,49 @@
+name: Deploy to S3
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    name: Sync to S3
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      # Upload assets (CSS/JS) with long-lived cache
+      - name: Upload static assets
+        run: |
+          aws s3 sync . s3://${{ secrets.S3_BUCKET }} \
+            --exclude "*" \
+            --include "*.css" \
+            --include "*.js" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --delete
+
+      # Upload HTML with no-cache so users always get latest
+      - name: Upload HTML
+        run: |
+          aws s3 cp index.html s3://${{ secrets.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      # Invalidate CloudFront cache (only if CLOUDFRONT_ID secret is set)
+      - name: Invalidate CloudFront
+        if: ${{ secrets.CLOUDFRONT_ID != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_ID }} \
+            --paths "/*"
