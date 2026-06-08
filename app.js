@@ -697,28 +697,34 @@ async function analyzeWithAI() {
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
     if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
 
-    const btn = document.getElementById('btnAnalyze');
-    btn.disabled = true;
-    document.getElementById('aiIdle').style.display    = 'none';
-    document.getElementById('aiLoading').style.display = '';
-    document.getElementById('aiResult').style.display  = 'none';
+    const btn      = document.getElementById('btnAnalyze');
+    const idleEl   = document.getElementById('aiIdle');
+    const loadEl   = document.getElementById('aiLoading');
+    const resultEl = document.getElementById('aiResult');
+
+    btn.disabled        = true;
+    idleEl.style.display   = 'none';
+    loadEl.style.display   = '';
+    resultEl.style.display = 'none';
 
     try {
         const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
             body: { sessions: sessions.slice(0, 30) },
         });
         if (error) throw new Error(error.message);
+        if (!data)  throw new Error('Không nhận được dữ liệu từ server');
 
         renderAIResult(data);
-        document.getElementById('aiLoading').style.display = 'none';
-        document.getElementById('aiResult').style.display  = '';
+        loadEl.style.display   = 'none';
+        resultEl.style.display = '';
     } catch (err) {
-        document.getElementById('aiLoading').style.display = 'none';
-        document.getElementById('aiIdle').style.display    = '';
+        console.error('analyzeWithAI:', err);
+        loadEl.style.display = 'none';
+        idleEl.style.display = '';
         showToast(`⚠️ Phân tích thất bại: ${err.message}`);
+    } finally {
+        btn.disabled = false;
     }
-
-    btn.disabled = false;
 }
 
 function renderAIResult(data) {
