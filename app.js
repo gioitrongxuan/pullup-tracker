@@ -287,6 +287,23 @@ function initPose() {
 }
 
 async function startCamera() {
+    // Camera API requires HTTPS (or localhost)
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        showCameraError(
+            '🔒 Cần HTTPS',
+            'Camera chỉ hoạt động trên HTTPS. Vui lòng truy cập qua https://'
+        );
+        return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+        showCameraError(
+            '📷 Trình duyệt không hỗ trợ',
+            'Trình duyệt này không hỗ trợ camera. Hãy dùng Chrome hoặc Safari mới nhất.'
+        );
+        return;
+    }
+
     document.getElementById('cameraPlaceholder').style.display = 'none';
     document.getElementById('poseStatus').style.display        = '';
     document.getElementById('cameraTipBar').style.display      = '';
@@ -299,11 +316,24 @@ async function startCamera() {
     try {
         await mpCam.start();
     } catch (err) {
-        showToast(`⚠️ Không mở được camera: ${err.message}`);
-        document.getElementById('cameraPlaceholder').style.display = '';
-        document.getElementById('poseStatus').style.display        = 'none';
-        document.getElementById('cameraTipBar').style.display      = 'none';
+        showCameraError('⚠️ Lỗi camera', err.message);
     }
+}
+
+function showCameraError(title, message) {
+    const ph = document.getElementById('cameraPlaceholder');
+    ph.style.display = '';
+    ph.innerHTML = `
+        <div class="cam-icon">🔒</div>
+        <p class="cam-title">${esc(title)}</p>
+        <p class="cam-sub">${esc(message)}</p>`;
+    document.getElementById('poseStatus').style.display   = 'none';
+    document.getElementById('cameraTipBar').style.display = 'none';
+    // Reset workout state
+    isRunning = false;
+    clearInterval(timerInterval);
+    document.getElementById('btnStop').style.display  = 'none';
+    document.getElementById('btnStart').style.display = '';
 }
 
 function stopCamera() {
