@@ -138,6 +138,48 @@
             </div>
         </div>
 
+        <!-- AI Analysis Section -->
+        <div class="ai-section" id="aiSection" style="display:none">
+            <div class="ai-header">
+                <h2 class="ai-title">💡 Phân tích AI</h2>
+                <button class="btn-ai-analyze" id="btnAnalyze">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    Phân tích
+                </button>
+            </div>
+
+            <div class="ai-idle" id="aiIdle">
+                Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn
+            </div>
+
+            <div class="ai-loading" id="aiLoading" style="display:none">
+                <div class="ai-spinner"></div>
+                <span>Đang phân tích...</span>
+            </div>
+
+            <div class="ai-result" id="aiResult" style="display:none">
+                <!-- Trend + Summary -->
+                <div class="ai-summary-row">
+                    <div class="ai-trend-badge" id="aiTrendBadge"></div>
+                    <p class="ai-summary-text" id="aiSummaryText"></p>
+                </div>
+
+                <!-- Weekly bar chart -->
+                <div class="ai-chart-block">
+                    <div class="ai-chart-label">Trung bình theo thứ trong tuần</div>
+                    <div class="ai-bars" id="aiBars"></div>
+                </div>
+
+                <!-- Recommendations -->
+                <div class="ai-recs" id="aiRecs"></div>
+
+                <!-- Next goal -->
+                <div class="ai-goal" id="aiGoal"></div>
+            </div>
+        </div>
+
     </main>
 </div>
 

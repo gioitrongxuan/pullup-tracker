@@ -435,6 +435,7 @@ async function writeSession(reps, duration_sec) {
     pendingSave = null;
     sessions.unshift(data);
     renderHistory();
+    updateAISection();
     showToast(`✅ Đã lưu ${reps} lần kéo xà!`);
 }
 
@@ -453,6 +454,7 @@ async function loadHistory() {
     if (error) { console.warn('history:', error.message); return; }
     sessions = data || [];
     renderHistory();
+    updateAISection();
 }
 
 function renderHistory() {
@@ -559,6 +561,7 @@ async function signOut() {
     closeProfileModal();
     updateAuthUI();
     renderHistory();
+    updateAISection();
     showToast('👋 Đã đăng xuất');
 }
 
@@ -669,3 +672,97 @@ if (window.google?.accounts?.id) {
 
 updateAuthUI();
 renderHistory();
+
+// ===== AI ANALYSIS =====
+
+const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+function updateAISection() {
+    const section = document.getElementById('aiSection');
+    // Show only when logged in and have enough data
+    section.style.display = (currentUser && sessions.length >= 3) ? '' : 'none';
+}
+
+async function analyzeWithAI() {
+    if (!supabaseClient || !currentUser) { openLoginModal(); return; }
+    if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
+
+    const btn = document.getElementById('btnAnalyze');
+    btn.disabled = true;
+    document.getElementById('aiIdle').style.display    = 'none';
+    document.getElementById('aiLoading').style.display = '';
+    document.getElementById('aiResult').style.display  = 'none';
+
+    try {
+        const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
+            body: { sessions: sessions.slice(0, 30) },
+        });
+        if (error) throw new Error(error.message);
+
+        renderAIResult(data);
+        document.getElementById('aiLoading').style.display = 'none';
+        document.getElementById('aiResult').style.display  = '';
+    } catch (err) {
+        document.getElementById('aiLoading').style.display = 'none';
+        document.getElementById('aiIdle').style.display    = '';
+        showToast(`⚠️ Phân tích thất bại: ${err.message}`);
+    }
+
+    btn.disabled = false;
+}
+
+function renderAIResult(data) {
+    // Trend badge
+    const badge = document.getElementById('aiTrendBadge');
+    const trendMap = {
+        improving: { label: `↑ Tiến bộ ${data.trend_pct ? '+'+data.trend_pct+'%' : ''}`, cls: 'improving' },
+        declining:  { label: `↓ Giảm ${data.trend_pct ? data.trend_pct+'%' : ''}`, cls: 'declining' },
+        stable:     { label: '→ Ổn định', cls: 'stable' },
+    };
+    const t = trendMap[data.trend] || trendMap.stable;
+    badge.textContent = t.label;
+    badge.className   = `ai-trend-badge ${t.cls}`;
+
+    // Summary
+    document.getElementById('aiSummaryText').textContent = data.summary || '';
+
+    // Weekly bar chart
+    const barsEl = document.getElementById('aiBars');
+    barsEl.innerHTML = '';
+    const weekly = data.weekly_data || DOW_VI.map((_, i) => ({ dow: i, avg: 0 }));
+    const maxAvg = Math.max(1, ...weekly.map((d) => Number(d.avg) || 0));
+
+    weekly.forEach((d) => {
+        const col  = document.createElement('div');
+        col.className = 'ai-bar-col';
+        const pct  = Math.max(4, ((Number(d.avg) || 0) / maxAvg) * 100);
+        const best = d.dow === data.best_dow;
+        col.innerHTML = `
+            <div class="ai-bar-fill${best ? ' best' : ''}" style="height:${pct}%"></div>
+            <div class="ai-bar-label${best ? ' best' : ''}">${DOW_VI[d.dow]}</div>`;
+        barsEl.appendChild(col);
+    });
+
+    // Recommendations
+    const recsEl = document.getElementById('aiRecs');
+    recsEl.innerHTML = '';
+    (data.recommendations || []).forEach((rec) => {
+        const item = document.createElement('div');
+        item.className = 'ai-rec-item';
+        item.innerHTML = `<div class="ai-rec-dot"></div><span>${esc(rec)}</span>`;
+        recsEl.appendChild(item);
+    });
+
+    // Next goal
+    const goalEl = document.getElementById('aiGoal');
+    if (data.next_goal) {
+        goalEl.innerHTML = `
+            <div class="ai-goal-num">${data.next_goal}</div>
+            <div>Mục tiêu tiếp theo: <strong>${data.next_goal} lần</strong> trong một buổi</div>`;
+        goalEl.style.display = 'flex';
+    } else {
+        goalEl.style.display = 'none';
+    }
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', analyzeWithAI);
