@@ -679,13 +679,21 @@ const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 function updateAISection() {
     const section = document.getElementById('aiSection');
-    // Show only when logged in and have enough data
-    section.style.display = (currentUser && sessions.length >= 3) ? '' : 'none';
+    section.style.display = currentUser ? '' : 'none';
+
+    const idle = document.getElementById('aiIdle');
+    if (idle && sessions.length < 3) {
+        idle.innerHTML = 'Cần ít nhất <strong>3 buổi tập</strong> để phân tích. Hãy tập thêm nhé!';
+        document.getElementById('btnAnalyze').disabled = true;
+    } else if (idle) {
+        idle.innerHTML = 'Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn';
+        document.getElementById('btnAnalyze').disabled = false;
+    }
 }
 
 async function analyzeWithAI() {
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
-    if (sessions.length < 3) { showToast('Cần ít nhất 3 buổi tập để phân tích'); return; }
+    if (sessions.length < 3) return;
 
     const btn = document.getElementById('btnAnalyze');
     btn.disabled = true;
