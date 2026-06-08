@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CLOUDFRONT_ID: ${{ secrets.CLOUDFRONT_ID }}
 
     steps:
       - name: Checkout
@@ -42,8 +44,8 @@ jobs:
 
       # Invalidate CloudFront cache (only if CLOUDFRONT_ID secret is set)
       - name: Invalidate CloudFront
-        if: ${{ secrets.CLOUDFRONT_ID != '' }}
+        if: env.CLOUDFRONT_ID != ''
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CLOUDFRONT_ID }} \
+            --distribution-id "${{ env.CLOUDFRONT_ID }}" \
             --paths "/*"
