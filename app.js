@@ -945,13 +945,129 @@ function renderDashChart() {
         barsEl.appendChild(col);
     });
 
-    // Scroll to end (most recent data)
+    // Scroll to end then draw line overlay
+    requestAnimationFrame(() => {
+        scrollEl.scrollLeft = scrollEl.scrollWidth;
+        requestAnimationFrame(() => drawLineOverlay(barsEl, values));
+    });
+}
+
+function drawLineOverlay(barsEl, values) {
+    const old = barsEl.querySelector('.dash-line-svg');
+    if (old) old.remove();
+    if (!values.some(v => v > 0)) return;
+
+    const cols     = Array.from(barsEl.querySelectorAll('.dash-bar-col'));
+    if (!cols.length) return;
+
+    const barsRect = barsEl.getBoundingClientRect();
+    const svgW     = barsEl.scrollWidth;
+    const svgH     = barsEl.offsetHeight;
+
+    const pts = cols.map((col, i) => {
+        const fill = col.querySelector('.dash-bar-fill');
+        const r    = fill.getBoundingClientRect();
+        return { x: r.left - barsRect.left + r.width / 2, y: r.top - barsRect.top, val: values[i] };
+    });
+
+    const ns  = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.classList.add('dash-line-svg');
+    svg.setAttribute('width', svgW);
+    svg.setAttribute('height', svgH);
+    svg.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:visible';
+
+    // Polyline through all points
+    const polyline = document.createElementNS(ns, 'polyline');
+    polyline.setAttribute('points',         pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+    polyline.setAttribute('fill',           'none');
+    polyline.setAttribute('stroke',         'rgba(0,229,212,0.65)');
+    polyline.setAttribute('stroke-width',   '1.5');
+    polyline.setAttribute('stroke-linejoin','round');
+    polyline.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(polyline);
+
+    // Dot + value label for each non-zero bar
+    pts.forEach(p => {
+        if (p.val === 0) return;
+
+        const c = document.createElementNS(ns, 'circle');
+        c.setAttribute('cx', p.x.toFixed(1));
+        c.setAttribute('cy', p.y.toFixed(1));
+        c.setAttribute('r',  '3');
+        c.setAttribute('fill',         'var(--accent)');
+        c.setAttribute('stroke',       'var(--bg)');
+        c.setAttribute('stroke-width', '1.5');
+        svg.appendChild(c);
+
+        const t = document.createElementNS(ns, 'text');
+        t.setAttribute('x',           p.x.toFixed(1));
+        t.setAttribute('y',           Math.max(9, p.y - 6).toFixed(1));
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('font-size',   '9');
+        t.setAttribute('font-weight', '600');
+        t.setAttribute('fill',        'rgba(152,152,184,0.9)');
+        t.setAttribute('font-family', '-apple-system,BlinkMacSystemFont,sans-serif');
+        t.textContent = p.val;
+        svg.appendChild(t);
+    });
+
+    barsEl.appendChild(svg);
+}
+
+function renderHeatmap() {
+    const grid     = document.getElementById('dashHeatmap');
+    const scrollEl = document.getElementById('dashHeatmapScroll');
+    if (!grid) return;
+
+    const dayMap = {};
+    sessions.forEach(s => {
+        const k = localDateKey(new Date(s.created_at));
+        dayMap[k] = (dayMap[k] || 0) + s.reps;
+    });
+    const maxReps = Object.values(dayMap).reduce((m, v) => Math.max(m, v), 1);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dow   = today.getDay() || 7;          // 1=Mon … 7=Sun
+    const start = new Date(today);
+    start.setDate(today.getDate() - (dow - 1) - 51 * 7); // Monday, 52 weeks ago
+
+    grid.innerHTML = '';
+    grid.style.gridTemplateRows = 'repeat(7, 12px)';
+    grid.style.gridAutoFlow     = 'column';
+    grid.style.gridAutoColumns  = '12px';
+    grid.style.gap              = '2px';
+
+    for (let i = 0; i < 364; i++) {
+        const d      = new Date(start);
+        d.setDate(start.getDate() + i);
+        const future = d > today;
+        const key    = localDateKey(d);
+        const reps   = future ? 0 : (dayMap[key] || 0);
+
+        const cell = document.createElement('div');
+        cell.style.cssText = 'width:12px;height:12px;border-radius:2px';
+
+        if (future) {
+            cell.style.background = 'transparent';
+        } else if (reps === 0) {
+            cell.style.background = 'var(--surface2)';
+        } else {
+            const alpha = (0.25 + (reps / maxReps) * 0.70).toFixed(2);
+            cell.style.background = `rgba(0,229,212,${alpha})`;
+        }
+        if (reps > 0) cell.title = `${key}: ${reps} lần`;
+        grid.appendChild(cell);
+    }
+
     requestAnimationFrame(() => { scrollEl.scrollLeft = scrollEl.scrollWidth; });
 }
 
 function openDashboard() {
     renderDashStats();
     renderDashChart();
+    renderHeatmap();
     document.getElementById('dashboardScreen').classList.add('open');
     document.body.style.overflow = 'hidden';
 }
