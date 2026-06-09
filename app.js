@@ -773,8 +773,9 @@ async function analyzeWithAI() {
     resultEl.style.display = 'none';
 
     try {
+        const days = groupByDay(sessions).slice(0, 90).map(d => ({ date: d.key, reps: d.reps }));
         const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
-            body: { sessions: sessions.slice(0, 30) },
+            body: { days },
         });
         if (error) throw new Error(error.message);
         if (!data)  throw new Error('Không nhận được dữ liệu từ server');

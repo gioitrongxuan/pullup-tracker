@@ -13,19 +13,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-interface SessionRecord { reps: number; created_at: string; }
 interface DayRecord { date: string; reps: number; }
-
-function groupByDay(sessions: SessionRecord[]): DayRecord[] {
-  const map: Record<string, number> = {};
-  for (const s of sessions) {
-    const date = s.created_at.slice(0, 10); // yyyy-mm-dd UTC
-    map[date] = (map[date] ?? 0) + s.reps;
-  }
-  return Object.entries(map)
-    .map(([date, reps]) => ({ date, reps }))
-    .sort((a, b) => b.date.localeCompare(a.date));
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -33,31 +21,31 @@ serve(async (req) => {
   }
 
   try {
-    const { sessions } = await req.json();
+    const body = await req.json();
 
     const apiKey = Deno.env.get('DEEPSEEK_API_KEY');
     if (!apiKey) return json({ error: 'DEEPSEEK_API_KEY not set' }, 500);
-    if (!sessions?.length) return json({ error: 'No sessions provided' }, 400);
 
-    // Aggregate to daily totals
-    const days = groupByDay(sessions as SessionRecord[]);
-    if (!days.length) return json({ error: 'No data after grouping' }, 400);
+    // Accept pre-grouped daily data from client (local timezone, accurate)
+    const days: DayRecord[] = body.days;
+    if (!days?.length) return json({ error: 'No data provided' }, 400);
 
-    const totalDays  = days.length;
-    const totalReps  = days.reduce((s, d) => s + d.reps, 0);
-    const avgPerDay  = (totalReps / totalDays).toFixed(1);
-    const best       = days.reduce((a, b) => b.reps > a.reps ? b : a);
-    const last7days  = days.slice(0, 7);
-    const prev7days  = days.slice(7, 14);
-    const avg7       = last7days.reduce((s, d) => s + d.reps, 0) / last7days.length;
-    const avgPrev7   = prev7days.length
-      ? prev7days.reduce((s, d) => s + d.reps, 0) / prev7days.length
+    // days is already sorted newest-first by the client
+    const totalDays = days.length;
+    const totalReps = days.reduce((s, d) => s + d.reps, 0);
+    const avgPerDay = (totalReps / totalDays).toFixed(1);
+    const best      = days.reduce((a, b) => b.reps > a.reps ? b : a);
+    const last7     = days.slice(0, 7);
+    const prev7     = days.slice(7, 14);
+    const avg7      = last7.reduce((s, d) => s + d.reps, 0) / last7.length;
+    const avgPrev7  = prev7.length
+      ? prev7.reduce((s, d) => s + d.reps, 0) / prev7.length
       : null;
 
-    // Group daily totals by day-of-week
+    // Group by day-of-week (date string is local yyyy-mm-dd, append noon to avoid DST edge)
     const byDow: Record<number, number[]> = {};
     days.forEach(d => {
-      const dow = new Date(d.date + 'T12:00:00Z').getDay();
+      const dow = new Date(d.date + 'T12:00:00').getDay();
       if (!byDow[dow]) byDow[dow] = [];
       byDow[dow].push(d.reps);
     });
@@ -73,7 +61,7 @@ serve(async (req) => {
 - TB 7 ngày tập gần nhất: ${avg7.toFixed(1)} lần
 - TB 7 ngày tập trước đó: ${avgPrev7 !== null ? avgPrev7.toFixed(1) : 'chưa đủ dữ liệu'} lần
 - Hiệu suất theo thứ trong tuần: ${JSON.stringify(dowAvg)}
-- 5 ngày tập gần nhất: ${JSON.stringify(last7days.slice(0, 5))}
+- 5 ngày tập gần nhất: ${JSON.stringify(last7.slice(0, 5))}
 
 Trả về JSON, không có text khác:
 {
