@@ -68,6 +68,21 @@ const EXERCISES = {
             'Ngồi xuống đùi song song sàn rồi đứng lên = 1 lần',
         ],
     },
+    dip: {
+        name: 'Bar Dips',
+        icon: '🦾',
+        usesCamera: true,
+        label: 'LẦN DIPS',
+        unit: 'lần dips',
+        startHint: '▶ Bắt đầu! Lên xà song song và bắt đầu...',
+        instructions: [
+            'Đặt camera nhìn từ <strong>bên cạnh</strong>, cách 1–2m',
+            'Nắm hai thanh song song, duỗi thẳng tay',
+            'AI nhận diện qua <strong>góc khuỷu tay</strong>',
+            'Thả người xuống khuỷu tay ~90°, đẩy lên = 1 lần',
+            'Camera nên thấy vai và khuỷu tay rõ ràng',
+        ],
+    },
     other: {
         name: 'Khác',
         icon: '🏃',
@@ -96,6 +111,8 @@ const BAR_Y_LIMIT  = 0.5;    // wrists must be in top 50% of frame (holding bar)
 // ===== OTHER EXERCISE DETECTION PARAMS =====
 const PUSHUP_DOWN_THRESH = 85;   // elbow angle (deg) < = arms bent (down position)
 const PUSHUP_UP_THRESH   = 150;  // elbow angle (deg) > = arms extended (up position)
+const DIP_DOWN_THRESH    = 90;   // elbow angle (deg) < = lowered (down position)
+const DIP_UP_THRESH      = 155;  // elbow angle (deg) > = arms locked out (up position)
 const SQUAT_DOWN_THRESH  = 90;   // knee angle (deg)  < = squatting (down position)
 const SQUAT_UP_THRESH    = 155;  // knee angle (deg)  > = standing (up position)
 const SITUP_DOWN_THRESH  = 140;  // hip angle (deg)   > = lying flat (down position)
@@ -310,6 +327,7 @@ function onPoseResults(lms) {
         case 'pushup': onPushupPose(lms); return;
         case 'squat':  onSquatPose(lms);  return;
         case 'situp':  onSitupPose(lms);  return;
+        case 'dip':    onDipPose(lms);    return;
         default:       onPullupPose(lms); return;
     }
 }
@@ -462,6 +480,47 @@ function onSitupPose(lms) {
     processPhaseTransition(detected);
 }
 
+// ===== BAR DIP DETECTION =====
+function onDipPose(lms) {
+    const ls = lm(lms, 11), rs = lm(lms, 12);  // shoulders
+    const le = lm(lms, 13), re = lm(lms, 14);  // elbows
+    const lw = lm(lms, 15), rw = lm(lms, 16);  // wrists
+
+    const hasLeft  = visible(ls) && visible(le) && visible(lw);
+    const hasRight = visible(rs) && visible(re) && visible(rw);
+
+    if (!hasLeft && !hasRight) {
+        updatePoseDot(false, 'Không thấy tay – camera từ bên cạnh');
+        return;
+    }
+
+    // Optional: check that wrists are roughly at hip level or above (hanging position)
+    const lh = lm(lms, 23), rh = lm(lms, 24);
+    const hipY = (visible(lh) && visible(rh)) ? (lh.y + rh.y) / 2
+               : visible(lh) ? lh.y : visible(rh) ? rh.y : 1;
+    const wristY = (hasLeft && hasRight) ? (lw.y + rw.y) / 2
+                 : hasLeft ? lw.y : rw.y;
+    const onBars = wristY < hipY + 0.05;
+
+    updatePoseDot(true, onBars ? '✓ Đang trên xà' : 'Phát hiện người');
+    if (!onBars) updateTip('Leo lên xà song song và nắm thanh');
+
+    const angles = [];
+    if (hasLeft)  angles.push(calcAngle(ls, le, lw));
+    if (hasRight) angles.push(calcAngle(rs, re, rw));
+    const avg = angles.reduce((a, b) => a + b, 0) / angles.length;
+    const smooth = smoothPush(avg);
+
+    let detected = null;
+    if (smooth < DIP_DOWN_THRESH) detected = 'DOWN';
+    else if (smooth > DIP_UP_THRESH) detected = 'UP';
+
+    if (detected === 'UP')   updateTip('Tay thẳng – thả xuống để đếm');
+    else if (detected === 'DOWN') updateTip('Đẩy lên!');
+
+    processPhaseTransition(detected);
+}
+
 function countRep() {
     repCount++;
     const el = document.getElementById('repCount');
@@ -479,10 +538,11 @@ function setCounterPhase(phase) {
     const oText   = document.getElementById('phaseOverlayText');
 
     const phaseText = {
-        pullup: { DOWN: '⬇ Đang xuống',        UP: '⬆ Đã lên – thả xuống' },
-        pushup: { DOWN: '⬇ Xuống – đẩy lên!',  UP: '⬆ Tư thế sẵn sàng' },
-        situp:  { DOWN: '⬇ Nằm xuống',          UP: '⬆ Ngồi lên!' },
-        squat:  { DOWN: '⬇ Squat – đứng lên!',  UP: '⬆ Đứng thẳng' },
+        pullup: { DOWN: '⬇ Đang xuống',          UP: '⬆ Đã lên – thả xuống' },
+        pushup: { DOWN: '⬇ Xuống – đẩy lên!',    UP: '⬆ Tư thế sẵn sàng' },
+        situp:  { DOWN: '⬇ Nằm xuống',            UP: '⬆ Ngồi lên!' },
+        squat:  { DOWN: '⬇ Squat – đứng lên!',    UP: '⬆ Đứng thẳng' },
+        dip:    { DOWN: '⬇ Xuống – đẩy lên!',     UP: '⬆ Tay thẳng' },
     };
     const labels = phaseText[currentExercise] || phaseText.pullup;
 
