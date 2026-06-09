@@ -233,7 +233,14 @@ function selectExercise(type) {
         tapArea.style.display = '';
     }
 
+    // Reset AI panel then load cached analysis for this exercise (if any)
+    const aiResultEl = document.getElementById('aiResult');
+    const aiIdleEl   = document.getElementById('aiIdle');
+    if (aiResultEl) aiResultEl.style.display = 'none';
+    if (aiIdleEl)   aiIdleEl.style.display   = '';
+
     updateAISection();
+    loadAICache();
 }
 
 // ===== MANUAL TAP COUNT =====
@@ -1206,7 +1213,7 @@ async function analyzeWithAI() {
     try {
         const days = groupByDay(exSessions).slice(0, 90).map(d => ({ date: d.key, reps: d.reps }));
         const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
-            body: { days },
+            body: { days, exercise_name: ex.name },
         });
         if (error) {
             let detail = error.message;

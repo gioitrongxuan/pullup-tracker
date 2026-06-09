@@ -30,6 +30,8 @@ serve(async (req) => {
     const days: DayRecord[] = body.days;
     if (!days?.length) return json({ error: 'No data provided' }, 400);
 
+    const exerciseName: string = body.exercise_name || 'kéo xà';
+
     // days is already sorted newest-first by the client
     const totalDays = days.length;
     const totalReps = days.reduce((s, d) => s + d.reps, 0);
@@ -54,7 +56,7 @@ serve(async (req) => {
       avg: (reps.reduce((a, b) => a + b, 0) / reps.length).toFixed(1),
     }));
 
-    const prompt = `Dữ liệu tập kéo xà của người dùng (thống kê theo ngày):
+    const prompt = `Dữ liệu tập ${exerciseName} của người dùng (thống kê theo ngày):
 - Tổng số ngày tập: ${totalDays}
 - Trung bình mỗi ngày tập: ${avgPerDay} lần
 - Kỷ lục trong 1 ngày: ${best.reps} lần (${best.date})
@@ -67,11 +69,11 @@ Trả về JSON, không có text khác:
 {
   "trend": "improving|declining|stable",
   "trend_pct": 12,
-  "summary": "nhận xét tổng quan 1-2 câu tiếng Việt, thẳng thắn",
+  "summary": "nhận xét tổng quan 1-2 câu tiếng Việt về ${exerciseName}, thẳng thắn",
   "best_dow": 3,
   "best_dow_label": "Thứ Tư",
   "weekly_data": [{"dow":0,"avg":0},{"dow":1,"avg":8},…{"dow":6,"avg":0}],
-  "recommendations": ["lời khuyên ngắn 1", "lời khuyên ngắn 2", "lời khuyên ngắn 3"],
+  "recommendations": ["lời khuyên ngắn về ${exerciseName} 1", "lời khuyên ngắn 2", "lời khuyên ngắn 3"],
   "next_goal": 15
 }`;
 
@@ -84,7 +86,7 @@ Trả về JSON, không có text khác:
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages: [
-          { role: 'system', content: 'Fitness analytics assistant. Return ONLY valid JSON, no markdown, no explanation.' },
+          { role: 'system', content: `Fitness analytics assistant. Analyze ${exerciseName} workout data and return ONLY valid JSON, no markdown, no explanation.` },
           { role: 'user',   content: prompt },
         ],
         response_format: { type: 'json_object' },
