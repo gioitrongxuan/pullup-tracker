@@ -443,6 +443,7 @@ async function writeSession(reps, duration_sec) {
 
     pendingSave = null;
     sessions.unshift(data);
+    renderDashStats();
     renderHistory();
     updateAISection();
     showToast(`✅ Đã lưu ${reps} lần kéo xà!`);
@@ -647,6 +648,7 @@ document.getElementById('profileOverlay').addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        closeDashboard();
         closeLoginModal();
         closeProfileModal();
         closeSaveModal();
@@ -792,3 +794,178 @@ function renderAIResult(data) {
 }
 
 document.getElementById('btnAnalyze').addEventListener('click', analyzeWithAI);
+
+// ===== DASHBOARD =====
+
+let dashPeriod = 'day';
+
+function localDateKey(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function localMonthKey(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+}
+
+function localWeekKey(d) {
+    // ISO week: move to Thursday to get correct year+week
+    const dt = new Date(d);
+    dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7));
+    const yearStart = new Date(dt.getFullYear(), 0, 1);
+    const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+    return `${dt.getFullYear()}-W${pad(wn)}`;
+}
+
+function buildBuckets(period) {
+    const now    = new Date();
+    const result = [];
+
+    if (period === 'day') {
+        for (let i = 13; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            result.push({ key: localDateKey(d), label: i === 0 ? 'Hôm\nnay' : `${d.getDate()}/${d.getMonth()+1}`, current: i === 0 });
+        }
+    } else if (period === 'week') {
+        for (let i = 11; i >= 0; i--) {
+            const d   = new Date(now);
+            d.setDate(d.getDate() - i * 7);
+            const dow = d.getDay() || 7;
+            const mon = new Date(d);
+            mon.setDate(d.getDate() - dow + 1);
+            result.push({ key: localWeekKey(d), label: i === 0 ? 'Tuần\nnày' : `${mon.getDate()}/${mon.getMonth()+1}`, current: i === 0 });
+        }
+    } else if (period === 'month') {
+        const M = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            result.push({ key: localMonthKey(d), label: M[d.getMonth()], current: i === 0 });
+        }
+    } else {
+        const yearMap = {};
+        sessions.forEach(s => { const y = new Date(s.created_at).getFullYear(); yearMap[y] = 1; });
+        const curY  = now.getFullYear();
+        yearMap[curY] = 1;
+        Object.keys(yearMap).map(Number).sort().forEach(y => {
+            result.push({ key: String(y), label: String(y), current: y === curY });
+        });
+    }
+    return result;
+}
+
+function sessionPeriodKey(isoStr, period) {
+    const d = new Date(isoStr);
+    if (period === 'day')   return localDateKey(d);
+    if (period === 'week')  return localWeekKey(d);
+    if (period === 'month') return localMonthKey(d);
+    return String(d.getFullYear());
+}
+
+function renderDashStats() {
+    if (!sessions.length) {
+        ['dashTotalReps','dashBestSession','dashAvgSession','dashTotalSessions'].forEach(id => {
+            document.getElementById(id).textContent = '—';
+        });
+        return;
+    }
+    const total = sessions.reduce((s, r) => s + r.reps, 0);
+    const best  = sessions.reduce((m, r) => Math.max(m, r.reps), 0);
+    const avg   = Math.round(total / sessions.length);
+    document.getElementById('dashTotalReps').textContent    = total.toLocaleString('vi-VN');
+    document.getElementById('dashBestSession').textContent  = best;
+    document.getElementById('dashAvgSession').textContent   = avg;
+    document.getElementById('dashTotalSessions').textContent = sessions.length;
+}
+
+function renderDashChart() {
+    const barsEl   = document.getElementById('dashBars');
+    const emptyEl  = document.getElementById('dashChartEmpty');
+    const scrollEl = document.getElementById('dashChartScroll');
+
+    if (!sessions.length) {
+        emptyEl.style.display  = '';
+        scrollEl.style.display = 'none';
+        return;
+    }
+
+    const buckets = buildBuckets(dashPeriod);
+
+    // Sum reps per bucket
+    const totals = {};
+    sessions.forEach(s => {
+        const k = sessionPeriodKey(s.created_at, dashPeriod);
+        totals[k] = (totals[k] || 0) + s.reps;
+    });
+
+    const values = buckets.map(b => totals[b.key] || 0);
+    const maxVal = values.reduce((m, v) => Math.max(m, v), 0);
+
+    if (maxVal === 0) {
+        emptyEl.style.display  = '';
+        scrollEl.style.display = 'none';
+        emptyEl.querySelector('p').textContent = 'Chưa có dữ liệu trong khoảng thời gian này';
+        return;
+    }
+
+    emptyEl.style.display  = 'none';
+    scrollEl.style.display = '';
+    barsEl.innerHTML = '';
+
+    // Bar sizing: expand to fill if few bars, else fixed width + scroll
+    const isSmall = buckets.length <= 8;
+    const barW    = isSmall ? `${Math.floor((100 - (buckets.length - 1) * 2) / buckets.length)}%` : '36px';
+
+    buckets.forEach((b, i) => {
+        const pct  = values[i] > 0 ? Math.max(3, (values[i] / maxVal) * 100) : 0;
+        const peak = values[i] === maxVal && values[i] > 0;
+        const col  = document.createElement('div');
+        col.className = 'dash-bar-col' + (b.current ? ' current' : '');
+        col.style.width    = barW;
+        col.style.minWidth = isSmall ? '24px' : '36px';
+        col.innerHTML = `<div class="dash-bar-fill${peak ? ' peak' : ''}" style="height:${pct}%"></div>
+<div class="dash-bar-label">${b.label}</div>`;
+        barsEl.appendChild(col);
+    });
+
+    // Scroll to end (most recent data)
+    requestAnimationFrame(() => { scrollEl.scrollLeft = scrollEl.scrollWidth; });
+}
+
+function openDashboard() {
+    renderDashStats();
+    renderDashChart();
+    document.getElementById('dashboardScreen').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeDashboard() {
+    document.getElementById('dashboardScreen').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+// Dashboard event wiring
+document.getElementById('fabDashboard').addEventListener('click', openDashboard);
+document.getElementById('dashboardBack').addEventListener('click', closeDashboard);
+
+document.getElementById('dashboardLogo').addEventListener('click', () => {
+    closeDashboard();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+document.getElementById('headerLogo').addEventListener('click', () => {
+    closeDashboard();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+document.querySelectorAll('.dash-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.dash-tab').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+        dashPeriod = btn.dataset.period;
+        renderDashChart();
+    });
+});
