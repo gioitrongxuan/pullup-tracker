@@ -467,6 +467,19 @@ async function loadHistory() {
     updateAISection();
 }
 
+// Group sessions by calendar day, return array sorted newest-first
+function groupByDay(list) {
+    const map = {};
+    list.forEach(s => {
+        const key = localDateKey(new Date(s.created_at));
+        if (!map[key]) map[key] = { reps: 0, duration: 0, sets: 0 };
+        map[key].reps     += s.reps;
+        map[key].duration += s.duration_sec;
+        map[key].sets++;
+    });
+    return Object.keys(map).sort().reverse().map(key => ({ key, ...map[key] }));
+}
+
 function renderHistory() {
     const container = document.getElementById('historyList');
     const empty     = document.getElementById('historyEmpty');
@@ -480,34 +493,38 @@ function renderHistory() {
         return;
     }
 
+    const days = groupByDay(sessions);
     empty.style.display = 'none';
-    countEl.textContent = `${sessions.length} lần`;
+    countEl.textContent = `${days.length} ngày`;
 
     const grid = document.createElement('div');
     grid.className = 'history-grid';
 
-    sessions.forEach(s => {
-        const rateStr = s.duration_sec > 0
-            ? `${(s.reps / (s.duration_sec / 60)).toFixed(1)}/phút`
+    days.forEach(d => {
+        const [y, m, day] = d.key.split('-');
+        const dateStr  = `${parseInt(day)}/${parseInt(m)}/${y}`;
+        const rateStr  = d.duration > 0
+            ? `${(d.reps / (d.duration / 60)).toFixed(1)}/phút`
             : '';
+        const setsStr  = d.sets > 1 ? `${d.sets} lần` : '';
 
         const card = document.createElement('div');
         card.className = 'session-card';
         card.innerHTML = `
             <div class="session-reps-box">
-                <span class="session-reps-num">${esc(String(s.reps))}</span>
+                <span class="session-reps-num">${esc(String(d.reps))}</span>
                 <span class="session-reps-label">LẦN</span>
             </div>
             <div class="session-meta">
-                <div class="session-date">${esc(formatDate(s.created_at))}</div>
+                <div class="session-date">${esc(dateStr)}</div>
                 <div class="session-dur">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                     </svg>
-                    ${esc(formatDuration(s.duration_sec))}
+                    ${esc(formatDuration(d.duration))}
                 </div>
             </div>
-            <div class="session-rate">${esc(rateStr)}</div>`;
+            <div class="session-rate">${setsStr ? esc(setsStr) + '<br>' : ''}${esc(rateStr)}</div>`;
         grid.appendChild(card);
     });
 
@@ -868,14 +885,14 @@ function renderDashStats() {
         });
         return;
     }
-    const total      = sessions.reduce((s, r) => s + r.reps, 0);
-    const best       = sessions.reduce((m, r) => Math.max(m, r.reps), 0);
-    const avg        = Math.round(total / sessions.length);
-    const uniqueDays = new Set(sessions.map(s => localDateKey(new Date(s.created_at)))).size;
+    const days  = groupByDay(sessions);
+    const total = days.reduce((s, d) => s + d.reps, 0);
+    const best  = days.reduce((m, d) => Math.max(m, d.reps), 0);
+    const avg   = days.length ? Math.round(total / days.length) : 0;
     document.getElementById('dashTotalReps').textContent     = total.toLocaleString('vi-VN');
     document.getElementById('dashBestSession').textContent   = best;
     document.getElementById('dashAvgSession').textContent    = avg;
-    document.getElementById('dashTotalSessions').textContent = uniqueDays;
+    document.getElementById('dashTotalSessions').textContent = days.length;
 }
 
 function renderDashChart() {
