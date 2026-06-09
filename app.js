@@ -777,7 +777,12 @@ async function analyzeWithAI() {
         const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
             body: { days },
         });
-        if (error) throw new Error(error.message);
+        if (error) {
+            let detail = error.message;
+            try { const b = await error.context?.json?.(); detail += ' | ' + JSON.stringify(b); } catch (_) {}
+            console.error('invoke error:', detail);
+            throw new Error(detail);
+        }
         if (!data)  throw new Error('Không nhận được dữ liệu từ server');
 
         saveAICache(data);
