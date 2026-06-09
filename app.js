@@ -211,12 +211,13 @@ function triggerRepFlash() {
 // ===== MEDIAPIPE INIT =====
 
 function setupCanvas() {
-    const video  = document.getElementById('inputVideo');
-    const canvas = document.getElementById('outputCanvas');
+    const video    = document.getElementById('inputVideo');
+    const canvas   = document.getElementById('outputCanvas');
+    const isMobile = window.innerWidth <= 780;
 
     video.addEventListener('loadeddata', () => {
-        canvas.width  = video.videoWidth  || 1280;
-        canvas.height = video.videoHeight || 720;
+        canvas.width  = video.videoWidth  || (isMobile ? 480 : 1280);
+        canvas.height = video.videoHeight || (isMobile ? 640 : 720);
     }, { once: false });
 }
 
@@ -281,12 +282,13 @@ function initPose() {
         ctx.restore();
     });
 
+    const isMobile = window.innerWidth <= 780;
     mpCam = new Camera(video, {
         onFrame: async () => {
             if (poseInst) await poseInst.send({ image: video });
         },
-        width:  1280,
-        height: 720,
+        width:  isMobile ? 480 : 1280,
+        height: isMobile ? 640 : 720,
     });
 
     return true;
