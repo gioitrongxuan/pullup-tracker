@@ -26,46 +26,46 @@ const EXERCISES = {
     pushup: {
         name: 'Chống Đẩy',
         icon: '💪',
-        usesCamera: false,
+        usesCamera: true,
         label: 'LẦN CHỐNG ĐẨY',
         unit: 'lần chống đẩy',
-        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần chống đẩy...',
+        startHint: '▶ Bắt đầu! Về tư thế chống đẩy...',
         instructions: [
-            'Nhấn vào vùng trống sau mỗi lần chống đẩy',
-            'Giữ thân thẳng từ đầu đến gót chân',
-            'Khuỷu tay gập ~90° khi xuống',
-            'Duỗi thẳng tay khi lên = 1 lần được đếm',
-            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+            'Đặt camera từ bên hoặc phía trước, cách 1–2m',
+            'Điều chỉnh để camera thấy <strong>toàn thân</strong>',
+            'Tay rộng hơn vai, thân người thẳng',
+            'AI nhận diện qua <strong>góc khuỷu tay</strong>',
+            'Xuống ngực gần sàn rồi đẩy lên = 1 lần',
         ],
     },
     situp: {
         name: 'Gập Bụng',
         icon: '🤸',
-        usesCamera: false,
+        usesCamera: true,
         label: 'LẦN GẬP BỤNG',
         unit: 'lần gập bụng',
-        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần gập bụng...',
+        startHint: '▶ Bắt đầu! Nằm xuống để bắt đầu...',
         instructions: [
-            'Nhấn vào vùng trống sau mỗi lần gập bụng',
+            'Đặt camera nhìn từ <strong>bên cạnh</strong>, cách 1–2m',
             'Nằm ngửa, gối gập, bàn chân đặt phẳng',
-            'Tay đặt sau đầu hoặc khoanh tay trước ngực',
-            'Nâng người đến khi khuỷu tay chạm gối = 1 lần',
-            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+            'AI nhận diện qua <strong>góc gập hông</strong>',
+            'Gập người lên rồi nằm xuống = 1 lần',
+            'Camera nên thấy vai, hông và đầu gối',
         ],
     },
     squat: {
         name: 'Squat',
         icon: '🦵',
-        usesCamera: false,
+        usesCamera: true,
         label: 'LẦN SQUAT',
         unit: 'lần squat',
-        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần squat...',
+        startHint: '▶ Bắt đầu! Đứng vào vị trí để bắt đầu...',
         instructions: [
-            'Nhấn vào vùng trống sau mỗi lần squat',
-            'Đứng rộng bằng vai, mũi chân hướng ra ngoài nhẹ',
-            'Ngồi xuống cho đùi song song với sàn',
-            'Giữ lưng thẳng, gối không vượt mũi chân',
-            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+            'Đặt camera nhìn từ <strong>bên cạnh</strong>, cách 2–3m',
+            'Điều chỉnh để camera thấy <strong>toàn bộ chân</strong>',
+            'Chân rộng bằng vai, mũi chân hơi hướng ra ngoài',
+            'AI nhận diện qua <strong>góc đầu gối</strong>',
+            'Ngồi xuống đùi song song sàn rồi đứng lên = 1 lần',
         ],
     },
     other: {
@@ -93,6 +93,14 @@ const MIN_VIS      = 0.5;    // landmark visibility threshold
 const SMOOTH_LEN   = 7;      // frames to average for noise reduction
 const BAR_Y_LIMIT  = 0.5;    // wrists must be in top 50% of frame (holding bar)
 
+// ===== OTHER EXERCISE DETECTION PARAMS =====
+const PUSHUP_DOWN_THRESH = 85;   // elbow angle (deg) < = arms bent (down position)
+const PUSHUP_UP_THRESH   = 150;  // elbow angle (deg) > = arms extended (up position)
+const SQUAT_DOWN_THRESH  = 90;   // knee angle (deg)  < = squatting (down position)
+const SQUAT_UP_THRESH    = 155;  // knee angle (deg)  > = standing (up position)
+const SITUP_DOWN_THRESH  = 140;  // hip angle (deg)   > = lying flat (down position)
+const SITUP_UP_THRESH    = 90;   // hip angle (deg)   < = sitting up (up position)
+
 // ===== STATE =====
 let supabaseClient = null;
 let currentUser    = null;
@@ -118,6 +126,36 @@ let tapLongPressTimer = null;
 
 // ===== UTILS =====
 const pad = n => String(n).padStart(2, '0');
+
+// Angle in degrees at vertex b, formed by points a–b–c
+function calcAngle(a, b, c) {
+    const abx = a.x - b.x, aby = a.y - b.y;
+    const cbx = c.x - b.x, cby = c.y - b.y;
+    const dot = abx * cbx + aby * cby;
+    const mag = Math.sqrt(abx*abx + aby*aby) * Math.sqrt(cbx*cbx + cby*cby);
+    if (mag === 0) return 180;
+    return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI;
+}
+
+// Generic phase-transition handler shared by all non-pull-up exercises.
+// For push/squat/sit-up: effort = DOWN, rest = UP → count fires on DOWN→UP return.
+// (Pull-ups use their own inline logic for backward compatibility.)
+function processPhaseTransition(detected) {
+    if (!detected || detected === pullPhase) return;
+
+    const prev = pullPhase;
+    pullPhase  = detected;
+
+    // For all non-pull-up exercises: effort = 'DOWN', rest = 'UP'
+    if (prev === 'UP' && detected === 'DOWN') seenDownBeforeUp = true;
+
+    if (isRunning && prev === 'DOWN' && detected === 'UP' && seenDownBeforeUp) {
+        countRep();
+        seenDownBeforeUp = false;
+    }
+
+    if (isRunning) setCounterPhase(pullPhase);
+}
 
 function formatDuration(sec) {
     return `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;
@@ -149,7 +187,11 @@ function selectExercise(type) {
     if (isRunning) return;
     if (!EXERCISES[type]) return;
 
-    currentExercise = type;
+    currentExercise  = type;
+    posBuffer        = [];
+    pullPhase        = null;
+    seenDownBeforeUp = false;
+
     const ex = EXERCISES[type];
 
     document.querySelectorAll('.ex-btn').forEach(btn => {
@@ -157,12 +199,14 @@ function selectExercise(type) {
     });
 
     document.getElementById('counterLabel').textContent = ex.label;
+    document.getElementById('counterPhase').textContent = 'Chưa bắt đầu';
+    document.getElementById('counterPhase').className   = 'counter-phase';
 
     const instList = document.getElementById('instList');
     instList.innerHTML = ex.instructions.map(i => `<li>${i}</li>`).join('');
 
     const placeholder = document.getElementById('cameraPlaceholder');
-    const tapArea = document.getElementById('tapArea');
+    const tapArea     = document.getElementById('tapArea');
 
     if (ex.usesCamera) {
         placeholder.style.display = '';
@@ -262,6 +306,15 @@ function isGrippingBar(lms) {
 }
 
 function onPoseResults(lms) {
+    switch (currentExercise) {
+        case 'pushup': onPushupPose(lms); return;
+        case 'squat':  onSquatPose(lms);  return;
+        case 'situp':  onSitupPose(lms);  return;
+        default:       onPullupPose(lms); return;
+    }
+}
+
+function onPullupPose(lms) {
     const nose = lm(lms, 0);
     const lw   = lm(lms, 15);
     const rw   = lm(lms, 16);
@@ -312,6 +365,103 @@ function onPoseResults(lms) {
     }
 }
 
+// ===== PUSH-UP DETECTION =====
+function onPushupPose(lms) {
+    const ls = lm(lms, 11), rs = lm(lms, 12);  // shoulders
+    const le = lm(lms, 13), re = lm(lms, 14);  // elbows
+    const lw = lm(lms, 15), rw = lm(lms, 16);  // wrists
+
+    const hasLeft  = visible(ls) && visible(le) && visible(lw);
+    const hasRight = visible(rs) && visible(re) && visible(rw);
+
+    if (!hasLeft && !hasRight) {
+        updatePoseDot(false, 'Không thấy tay – điều chỉnh camera');
+        return;
+    }
+
+    updatePoseDot(true, 'Đang theo dõi');
+
+    const angles = [];
+    if (hasLeft)  angles.push(calcAngle(ls, le, lw));
+    if (hasRight) angles.push(calcAngle(rs, re, rw));
+    const avg = angles.reduce((a, b) => a + b, 0) / angles.length;
+    const smooth = smoothPush(avg);
+
+    let detected = null;
+    if (smooth < PUSHUP_DOWN_THRESH) detected = 'DOWN';
+    else if (smooth > PUSHUP_UP_THRESH) detected = 'UP';
+
+    if (detected === 'UP')   updateTip('Tư thế sẵn sàng – xuống để đếm');
+    else if (detected === 'DOWN') updateTip('Đẩy lên!');
+
+    processPhaseTransition(detected);
+}
+
+// ===== SQUAT DETECTION =====
+function onSquatPose(lms) {
+    const lh = lm(lms, 23), rh = lm(lms, 24);  // hips
+    const lk = lm(lms, 25), rk = lm(lms, 26);  // knees
+    const la = lm(lms, 27), ra = lm(lms, 28);  // ankles
+
+    const hasLeft  = visible(lh) && visible(lk) && visible(la);
+    const hasRight = visible(rh) && visible(rk) && visible(ra);
+
+    if (!hasLeft && !hasRight) {
+        updatePoseDot(false, 'Không thấy chân – camera từ bên cạnh');
+        return;
+    }
+
+    updatePoseDot(true, 'Đang theo dõi');
+
+    const angles = [];
+    if (hasLeft)  angles.push(calcAngle(lh, lk, la));
+    if (hasRight) angles.push(calcAngle(rh, rk, ra));
+    const avg = angles.reduce((a, b) => a + b, 0) / angles.length;
+    const smooth = smoothPush(avg);
+
+    let detected = null;
+    if (smooth < SQUAT_DOWN_THRESH) detected = 'DOWN';
+    else if (smooth > SQUAT_UP_THRESH) detected = 'UP';
+
+    if (detected === 'UP')   updateTip('Đứng thẳng – squat xuống để đếm');
+    else if (detected === 'DOWN') updateTip('Đứng lên!');
+
+    processPhaseTransition(detected);
+}
+
+// ===== SIT-UP DETECTION =====
+function onSitupPose(lms) {
+    const ls = lm(lms, 11), rs = lm(lms, 12);  // shoulders
+    const lh = lm(lms, 23), rh = lm(lms, 24);  // hips
+    const lk = lm(lms, 25), rk = lm(lms, 26);  // knees
+
+    const hasLeft  = visible(ls) && visible(lh) && visible(lk);
+    const hasRight = visible(rs) && visible(rh) && visible(rk);
+
+    if (!hasLeft && !hasRight) {
+        updatePoseDot(false, 'Không thấy người – camera từ bên cạnh');
+        return;
+    }
+
+    updatePoseDot(true, 'Đang theo dõi');
+
+    const angles = [];
+    if (hasLeft)  angles.push(calcAngle(ls, lh, lk));
+    if (hasRight) angles.push(calcAngle(rs, rh, rk));
+    const avg = angles.reduce((a, b) => a + b, 0) / angles.length;
+    const smooth = smoothPush(avg);
+
+    // Large angle = lying flat (DOWN), small angle = sitting up (UP)
+    let detected = null;
+    if (smooth > SITUP_DOWN_THRESH) detected = 'DOWN';
+    else if (smooth < SITUP_UP_THRESH) detected = 'UP';
+
+    if (detected === 'DOWN') updateTip('Gập người lên!');
+    else if (detected === 'UP')   updateTip('Nằm xuống để đếm');
+
+    processPhaseTransition(detected);
+}
+
 function countRep() {
     repCount++;
     const el = document.getElementById('repCount');
@@ -324,19 +474,27 @@ function countRep() {
 }
 
 function setCounterPhase(phase) {
-    const el = document.getElementById('counterPhase');
+    const el      = document.getElementById('counterPhase');
     const overlay = document.getElementById('phaseOverlay');
     const oText   = document.getElementById('phaseOverlayText');
 
+    const phaseText = {
+        pullup: { DOWN: '⬇ Đang xuống',        UP: '⬆ Đã lên – thả xuống' },
+        pushup: { DOWN: '⬇ Xuống – đẩy lên!',  UP: '⬆ Tư thế sẵn sàng' },
+        situp:  { DOWN: '⬇ Nằm xuống',          UP: '⬆ Ngồi lên!' },
+        squat:  { DOWN: '⬇ Squat – đứng lên!',  UP: '⬆ Đứng thẳng' },
+    };
+    const labels = phaseText[currentExercise] || phaseText.pullup;
+
     if (phase === 'DOWN') {
-        el.textContent = '⬇ Đang xuống';
-        el.className   = 'counter-phase phase-down';
+        el.textContent    = labels.DOWN;
+        el.className      = 'counter-phase phase-down';
         overlay.className = 'phase-overlay phase-down';
         oText.textContent = '↓';
         overlay.style.display = '';
     } else if (phase === 'UP') {
-        el.textContent = '⬆ Đã lên – thả xuống';
-        el.className   = 'counter-phase phase-up';
+        el.textContent    = labels.UP;
+        el.className      = 'counter-phase phase-up';
         overlay.className = 'phase-overlay phase-up';
         oText.textContent = '↑';
         overlay.style.display = '';
