@@ -465,6 +465,7 @@ async function loadHistory() {
     sessions = data || [];
     renderHistory();
     updateAISection();
+    loadAICache();
 }
 
 // Group sessions by calendar day, return array sorted newest-first
@@ -580,6 +581,7 @@ async function handleCredentialResponse(response) {
 }
 
 async function signOut() {
+    clearAICache();
     if (supabaseClient) await supabaseClient.auth.signOut();
     if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
     currentUser = null;
@@ -721,8 +723,42 @@ function updateAISection() {
     document.getElementById('btnAnalyze').disabled = !currentUser;
 }
 
+function aiCacheKey() {
+    return currentUser ? `ai_result_${currentUser.id}` : null;
+}
+
+function saveAICache(data) {
+    const key = aiCacheKey();
+    if (!key) return;
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (_) {}
+}
+
+function loadAICache() {
+    const key = aiCacheKey();
+    if (!key) return false;
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        if (!data) return false;
+
+        const idleEl   = document.getElementById('aiIdle');
+        const loadEl   = document.getElementById('aiLoading');
+        const resultEl = document.getElementById('aiResult');
+        renderAIResult(data);
+        idleEl.style.display   = 'none';
+        loadEl.style.display   = 'none';
+        resultEl.style.display = '';
+        return true;
+    } catch (_) { return false; }
+}
+
+function clearAICache() {
+    const key = aiCacheKey();
+    if (key) localStorage.removeItem(key);
+}
+
 async function analyzeWithAI() {
-    console.log('analyzeWithAI called', { currentUser, sessions: sessions.length, supabaseClient: !!supabaseClient });
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
     if (sessions.length < 1) { showToast('Chưa có dữ liệu để phân tích'); return; }
 
@@ -731,7 +767,7 @@ async function analyzeWithAI() {
     const loadEl   = document.getElementById('aiLoading');
     const resultEl = document.getElementById('aiResult');
 
-    btn.disabled        = true;
+    btn.disabled           = true;
     idleEl.style.display   = 'none';
     loadEl.style.display   = '';
     resultEl.style.display = 'none';
@@ -743,6 +779,7 @@ async function analyzeWithAI() {
         if (error) throw new Error(error.message);
         if (!data)  throw new Error('Không nhận được dữ liệu từ server');
 
+        saveAICache(data);
         renderAIResult(data);
         loadEl.style.display   = 'none';
         resultEl.style.display = '';
