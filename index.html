@@ -39,6 +39,15 @@
     <!-- ===== MAIN ===== -->
     <main class="main">
 
+        <!-- Exercise Picker -->
+        <div class="exercise-picker" id="exercisePicker">
+            <button class="ex-btn active" data-type="pullup">🏋️ Kéo Xà</button>
+            <button class="ex-btn" data-type="pushup">💪 Chống Đẩy</button>
+            <button class="ex-btn" data-type="situp">🤸 Gập Bụng</button>
+            <button class="ex-btn" data-type="squat">🦵 Squat</button>
+            <button class="ex-btn" data-type="other">➕ Khác</button>
+        </div>
+
         <!-- Workout Layout -->
         <div class="workout-layout">
 
@@ -53,6 +62,15 @@
                         <div class="cam-icon">📷</div>
                         <p class="cam-title">Camera chưa bật</p>
                         <p class="cam-sub">Nhấn <strong>Bắt đầu</strong> để bật camera và AI theo dõi chuyển động</p>
+                    </div>
+
+                    <!-- Tap area for manual-count exercises -->
+                    <div class="tap-area" id="tapArea" style="display:none">
+                        <div class="tap-circle" id="tapCircle">
+                            <div class="tap-icon-big">✋</div>
+                            <div class="tap-label">NHẤN ĐỂ ĐẾM</div>
+                        </div>
+                        <p class="tap-sub">Nhấn giữ để trừ 1</p>
                     </div>
 
                     <!-- Pose detection status -->
@@ -82,7 +100,7 @@
 
                 <!-- Counter -->
                 <div class="counter-card">
-                    <div class="counter-label">LẦN KÉO XÀ</div>
+                    <div class="counter-label" id="counterLabel">LẦN KÉO XÀ</div>
                     <div class="counter-value" id="repCount">0</div>
                     <div class="counter-phase" id="counterPhase">Chưa bắt đầu</div>
                 </div>
@@ -110,12 +128,8 @@
                 <!-- Instructions -->
                 <div class="instructions-card" id="instructionsCard">
                     <div class="inst-title">Hướng dẫn</div>
-                    <ol class="inst-list">
-                        <li>Đặt camera cách bạn 2–3 mét</li>
-                        <li>Điều chỉnh góc để thấy <strong>toàn thân</strong></li>
-                        <li>Leo lên xà, tay nắm thanh</li>
-                        <li>Kéo lên cho đến khi <strong>cằm qua xà</strong></li>
-                        <li>Thả xuống = 1 lần được đếm</li>
+                    <ol class="inst-list" id="instList">
+                        <!-- populated by selectExercise() -->
                     </ol>
                 </div>
 
@@ -301,7 +315,7 @@
         </div>
         <div class="save-result">
             <div class="save-big" id="saveReps">0</div>
-            <div class="save-big-label">lần kéo xà</div>
+            <div class="save-big-label" id="saveBigLabel">lần kéo xà</div>
             <div class="save-duration" id="saveDuration">0:00</div>
             <div class="save-duration-label">thời gian</div>
         </div>

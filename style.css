@@ -97,6 +97,40 @@ body {
 }
 .btn-login-header:hover { background: var(--accent-mid); }
 
+/* ===== EXERCISE PICKER ===== */
+.exercise-picker {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 20px;
+    scrollbar-width: none;
+}
+.exercise-picker::-webkit-scrollbar { display: none; }
+
+.ex-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    color: var(--text-mid);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ex-btn:hover { border-color: var(--border-hi); color: var(--text); }
+.ex-btn.active {
+    background: var(--accent-dim);
+    border-color: rgba(0,229,212,0.4);
+    color: var(--accent);
+}
+
 /* ===== MAIN ===== */
 .main {
     max-width: 1160px;
@@ -180,6 +214,62 @@ body {
 .cam-title  { font-size: 1.05rem; color: var(--text-mid); font-weight: 600; }
 .cam-sub    { font-size: 0.84rem; color: var(--text-dim); max-width: 260px; line-height: 1.6; }
 .cam-sub strong { color: var(--accent); }
+
+/* ===== TAP AREA (manual count) ===== */
+.tap-area {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background: linear-gradient(160deg, #161625 0%, #0d0d18 100%);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.tap-circle {
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    border: 2px solid rgba(0,229,212,0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 0 48px rgba(0,229,212,0.08);
+    transition: transform 0.1s, background 0.1s, box-shadow 0.15s;
+}
+.tap-area.active .tap-circle {
+    box-shadow: 0 0 64px rgba(0,229,212,0.18);
+}
+.tap-area:active .tap-circle {
+    transform: scale(0.92);
+    background: var(--accent-mid);
+    box-shadow: 0 0 80px rgba(0,229,212,0.3);
+}
+
+.tap-icon-big { font-size: 52px; line-height: 1; }
+.tap-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+}
+.tap-sub {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+@media (max-width: 780px) {
+    .tap-circle { width: 140px; height: 140px; }
+    .tap-icon-big { font-size: 42px; }
+}
 
 .pose-status {
     position: absolute;
@@ -459,6 +549,15 @@ body {
 .session-reps-label { font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.04em; }
 
 .session-meta { flex: 1; min-width: 0; }
+.session-ex-badge {
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .session-date {
     font-size: 0.88rem;
     font-weight: 600;

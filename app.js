@@ -6,6 +6,83 @@ const GOOGLE_CLIENT_ID  = '467685882670-6rr0fnqdpch5gk78b188fqa8j6m0j47d.apps.go
 const SUPABASE_URL      = 'https://epqohkagzvboncaciynl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwcW9oa2FnenZib25jYWNpeW5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzEzNTksImV4cCI6MjA5NjI0NzM1OX0.KlFNBV0O1xJcFMbCbDtCJe0fDNqMY8i3Q9y63oKW3k8';
 
+// ===== EXERCISE CONFIG =====
+const EXERCISES = {
+    pullup: {
+        name: 'Kéo Xà',
+        icon: '🏋️',
+        usesCamera: true,
+        label: 'LẦN KÉO XÀ',
+        unit: 'lần kéo xà',
+        startHint: '▶ Bắt đầu! Leo lên xà và bắt đầu kéo...',
+        instructions: [
+            'Đặt camera cách bạn 2–3 mét',
+            'Điều chỉnh góc để thấy <strong>toàn thân</strong>',
+            'Leo lên xà, tay nắm thanh',
+            'Kéo lên cho đến khi <strong>cằm qua xà</strong>',
+            'Thả xuống = 1 lần được đếm',
+        ],
+    },
+    pushup: {
+        name: 'Chống Đẩy',
+        icon: '💪',
+        usesCamera: false,
+        label: 'LẦN CHỐNG ĐẨY',
+        unit: 'lần chống đẩy',
+        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần chống đẩy...',
+        instructions: [
+            'Nhấn vào vùng trống sau mỗi lần chống đẩy',
+            'Giữ thân thẳng từ đầu đến gót chân',
+            'Khuỷu tay gập ~90° khi xuống',
+            'Duỗi thẳng tay khi lên = 1 lần được đếm',
+            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+        ],
+    },
+    situp: {
+        name: 'Gập Bụng',
+        icon: '🤸',
+        usesCamera: false,
+        label: 'LẦN GẬP BỤNG',
+        unit: 'lần gập bụng',
+        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần gập bụng...',
+        instructions: [
+            'Nhấn vào vùng trống sau mỗi lần gập bụng',
+            'Nằm ngửa, gối gập, bàn chân đặt phẳng',
+            'Tay đặt sau đầu hoặc khoanh tay trước ngực',
+            'Nâng người đến khi khuỷu tay chạm gối = 1 lần',
+            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+        ],
+    },
+    squat: {
+        name: 'Squat',
+        icon: '🦵',
+        usesCamera: false,
+        label: 'LẦN SQUAT',
+        unit: 'lần squat',
+        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần squat...',
+        instructions: [
+            'Nhấn vào vùng trống sau mỗi lần squat',
+            'Đứng rộng bằng vai, mũi chân hướng ra ngoài nhẹ',
+            'Ngồi xuống cho đùi song song với sàn',
+            'Giữ lưng thẳng, gối không vượt mũi chân',
+            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+        ],
+    },
+    other: {
+        name: 'Khác',
+        icon: '🏃',
+        usesCamera: false,
+        label: 'LẦN',
+        unit: 'lần',
+        startHint: '▶ Bắt đầu! Nhấn màn hình sau mỗi lần tập...',
+        instructions: [
+            'Nhấn vào vùng trống sau mỗi lần tập',
+            'Phù hợp cho mọi bài tập đếm số lượng',
+            'Nhấn giữ để trừ 1 nếu đếm nhầm',
+        ],
+    },
+};
+
 // ===== PULL-UP DETECTION PARAMS =====
 // MediaPipe normalized coords: y=0 = top of frame, y=1 = bottom.
 // When hanging DOWN: nose.y >> wrist.y  → diff = nose.y - wrist.y > DOWN_THRESH
@@ -20,6 +97,8 @@ const BAR_Y_LIMIT  = 0.5;    // wrists must be in top 50% of frame (holding bar)
 let supabaseClient = null;
 let currentUser    = null;
 
+let currentExercise = 'pullup';
+
 let isRunning     = false;
 let repCount      = 0;
 let sessionStart  = 0;
@@ -33,7 +112,9 @@ let mpCam      = null;        // MediaPipe Camera instance
 let poseActive = false;
 
 let sessions    = [];         // loaded from Supabase
-let pendingSave = null;       // { reps, duration_sec } waiting for auth/confirm
+let pendingSave = null;       // { reps, duration_sec, exercise_type } waiting for auth/confirm
+
+let tapLongPressTimer = null;
 
 // ===== UTILS =====
 const pad = n => String(n).padStart(2, '0');
@@ -60,6 +141,83 @@ function showToast(msg) {
     el.classList.add('show');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ===== EXERCISE SELECTION =====
+
+function selectExercise(type) {
+    if (isRunning) return;
+    if (!EXERCISES[type]) return;
+
+    currentExercise = type;
+    const ex = EXERCISES[type];
+
+    document.querySelectorAll('.ex-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    document.getElementById('counterLabel').textContent = ex.label;
+
+    const instList = document.getElementById('instList');
+    instList.innerHTML = ex.instructions.map(i => `<li>${i}</li>`).join('');
+
+    const placeholder = document.getElementById('cameraPlaceholder');
+    const tapArea = document.getElementById('tapArea');
+
+    if (ex.usesCamera) {
+        placeholder.style.display = '';
+        tapArea.style.display = 'none';
+    } else {
+        placeholder.style.display = 'none';
+        tapArea.style.display = '';
+    }
+
+    updateAISection();
+}
+
+// ===== MANUAL TAP COUNT =====
+
+function manualCountRep() {
+    if (!isRunning) return;
+    repCount++;
+    const el = document.getElementById('repCount');
+    el.textContent = repCount;
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+    triggerRepFlash();
+    updateTip(`🔥 Tốt lắm! ${repCount} lần rồi!`);
+}
+
+function setupTapArea() {
+    const tapArea = document.getElementById('tapArea');
+
+    tapArea.addEventListener('pointerdown', () => {
+        if (!isRunning) return;
+        tapLongPressTimer = setTimeout(() => {
+            tapLongPressTimer = null;
+            if (repCount > 0) {
+                repCount--;
+                document.getElementById('repCount').textContent = repCount;
+                showToast('↩ Đã trừ 1');
+            }
+        }, 600);
+    });
+
+    tapArea.addEventListener('pointerup', () => {
+        if (tapLongPressTimer !== null) {
+            clearTimeout(tapLongPressTimer);
+            tapLongPressTimer = null;
+            manualCountRep();
+        }
+    });
+
+    tapArea.addEventListener('pointerleave', () => {
+        if (tapLongPressTimer !== null) {
+            clearTimeout(tapLongPressTimer);
+            tapLongPressTimer = null;
+        }
+    });
 }
 
 // ===== PULL-UP ALGORITHM =====
@@ -362,6 +520,8 @@ function startWorkout() {
     isRunning    = true;
     sessionStart = Date.now();
 
+    const ex = EXERCISES[currentExercise];
+
     document.getElementById('repCount').textContent = '0';
     document.getElementById('counterPhase').textContent = 'Đang theo dõi...';
     document.getElementById('counterPhase').className  = 'counter-phase';
@@ -369,12 +529,19 @@ function startWorkout() {
     document.getElementById('btnStart').style.display    = 'none';
     document.getElementById('btnStop').style.display     = '';
     document.getElementById('instructionsCard').style.display = 'none';
+    document.getElementById('exercisePicker').style.display = 'none';
 
     timerInterval = setInterval(tickTimer, 1000);
     tickTimer();
 
-    startCamera();
-    showToast('▶ Bắt đầu! Leo lên xà và bắt đầu kéo...');
+    if (ex.usesCamera) {
+        startCamera();
+    } else {
+        document.getElementById('tapArea').style.display = '';
+        document.getElementById('tapArea').classList.add('active');
+    }
+
+    showToast(ex.startHint);
 }
 
 function tickTimer() {
@@ -388,6 +555,7 @@ function endWorkout() {
     clearInterval(timerInterval);
 
     const duration = Math.floor((Date.now() - sessionStart) / 1000);
+    const ex = EXERCISES[currentExercise];
 
     document.getElementById('btnStop').style.display     = 'none';
     document.getElementById('btnStart').style.display    = '';
@@ -395,22 +563,29 @@ function endWorkout() {
     document.getElementById('counterPhase').className    = 'counter-phase';
     document.getElementById('phaseOverlay').style.display = 'none';
     document.getElementById('instructionsCard').style.display = '';
+    document.getElementById('exercisePicker').style.display = '';
 
-    stopCamera();
+    if (ex.usesCamera) {
+        stopCamera();
+    } else {
+        document.getElementById('tapArea').classList.remove('active');
+    }
 
     if (repCount > 0) {
-        pendingSave = { reps: repCount, duration_sec: duration };
+        pendingSave = { reps: repCount, duration_sec: duration, exercise_type: currentExercise };
         openSaveModal(repCount, duration);
     } else {
-        showToast('Không có lần kéo nào được ghi nhận.');
+        showToast('Không có lần tập nào được ghi nhận.');
     }
 }
 
 // ===== SAVE MODAL =====
 
 function openSaveModal(reps, duration) {
-    document.getElementById('saveReps').textContent     = reps;
-    document.getElementById('saveDuration').textContent = formatDuration(duration);
+    const ex = EXERCISES[currentExercise] || EXERCISES.pullup;
+    document.getElementById('saveReps').textContent      = reps;
+    document.getElementById('saveDuration').textContent  = formatDuration(duration);
+    document.getElementById('saveBigLabel').textContent  = ex.unit;
     document.getElementById('saveOverlay').classList.add('open');
 }
 
@@ -430,9 +605,11 @@ async function confirmSave() {
 async function writeSession(reps, duration_sec) {
     if (!supabaseClient || !currentUser) return;
 
+    const exercise_type = pendingSave?.exercise_type || 'pullup';
+
     const { data, error } = await supabaseClient
         .from('pullup_sessions')
-        .insert({ user_id: currentUser.id, reps, duration_sec })
+        .insert({ user_id: currentUser.id, reps, duration_sec, exercise_type })
         .select()
         .single();
 
@@ -446,7 +623,8 @@ async function writeSession(reps, duration_sec) {
     renderDashStats();
     renderHistory();
     updateAISection();
-    showToast(`✅ Đã lưu ${reps} lần kéo xà!`);
+    const ex = EXERCISES[exercise_type] || EXERCISES.pullup;
+    showToast(`✅ Đã lưu ${reps} ${ex.unit}!`);
 }
 
 // ===== HISTORY =====
@@ -468,7 +646,25 @@ async function loadHistory() {
     loadAICache();
 }
 
-// Group sessions by calendar day, return array sorted newest-first
+// Group sessions by calendar day + exercise type, sorted newest-first
+function groupByDayAndExercise(list) {
+    const map = {};
+    list.forEach(s => {
+        const exType  = s.exercise_type || 'pullup';
+        const dateKey = localDateKey(new Date(s.created_at));
+        const mapKey  = `${dateKey}|${exType}`;
+        if (!map[mapKey]) map[mapKey] = { dateKey, exercise_type: exType, reps: 0, duration: 0, sets: 0 };
+        map[mapKey].reps     += s.reps;
+        map[mapKey].duration += s.duration_sec;
+        map[mapKey].sets++;
+    });
+    return Object.values(map).sort((a, b) => {
+        const dc = b.dateKey.localeCompare(a.dateKey);
+        return dc !== 0 ? dc : a.exercise_type.localeCompare(b.exercise_type);
+    });
+}
+
+// Group sessions by calendar day (all exercises), return array sorted newest-first
 function groupByDay(list) {
     const map = {};
     list.forEach(s => {
@@ -494,20 +690,22 @@ function renderHistory() {
         return;
     }
 
-    const days = groupByDay(sessions);
+    const entries    = groupByDayAndExercise(sessions);
+    const uniqueDays = new Set(entries.map(e => e.dateKey)).size;
     empty.style.display = 'none';
-    countEl.textContent = `${days.length} ngày`;
+    countEl.textContent = `${uniqueDays} ngày`;
 
     const grid = document.createElement('div');
     grid.className = 'history-grid';
 
-    days.forEach(d => {
-        const [y, m, day] = d.key.split('-');
+    entries.forEach(d => {
+        const [y, m, day] = d.dateKey.split('-');
         const dateStr  = `${parseInt(day)}/${parseInt(m)}/${y}`;
         const rateStr  = d.duration > 0
             ? `${(d.reps / (d.duration / 60)).toFixed(1)}/phút`
             : '';
-        const setsStr  = d.sets > 1 ? `${d.sets} lần` : '';
+        const setsStr  = d.sets > 1 ? `${d.sets} hiệp` : '';
+        const ex       = EXERCISES[d.exercise_type] || EXERCISES.pullup;
 
         const card = document.createElement('div');
         card.className = 'session-card';
@@ -517,6 +715,7 @@ function renderHistory() {
                 <span class="session-reps-label">LẦN</span>
             </div>
             <div class="session-meta">
+                <div class="session-ex-badge">${esc(ex.icon)} ${esc(ex.name)}</div>
                 <div class="session-date">${esc(dateStr)}</div>
                 <div class="session-dur">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -637,6 +836,12 @@ function openProfileModal()  {
 function closeProfileModal() { document.getElementById('profileOverlay').classList.remove('open'); }
 
 // ===== EVENT WIRING =====
+
+// Exercise picker
+document.querySelectorAll('.ex-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectExercise(btn.dataset.type));
+});
+
 document.getElementById('btnStart').addEventListener('click', startWorkout);
 document.getElementById('btnStop').addEventListener('click', endWorkout);
 
@@ -676,6 +881,8 @@ document.addEventListener('keydown', e => {
 
 // ===== BOOT =====
 setupCanvas();
+setupTapArea();
+selectExercise('pullup');
 
 // Init Supabase & restore session
 if (window.supabase) {
@@ -712,19 +919,22 @@ function updateAISection() {
     const idle = document.getElementById('aiIdle');
     if (!idle) return;
 
+    const ex = EXERCISES[currentExercise] || EXERCISES.pullup;
+    const exSessions = sessions.filter(s => (s.exercise_type || 'pullup') === currentExercise);
+
     if (!currentUser) {
         idle.innerHTML = 'Đăng nhập để sử dụng tính năng phân tích AI';
-    } else if (sessions.length < 1) {
-        idle.innerHTML = 'Chưa có lần tập nào. Hãy hoàn thành lần đầu tiên!';
+    } else if (exSessions.length < 1) {
+        idle.innerHTML = `Chưa có lần tập <strong>${esc(ex.name)}</strong> nào. Hãy hoàn thành lần đầu tiên!`;
     } else {
-        idle.innerHTML = 'Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập luyện của bạn';
+        idle.innerHTML = `Nhấn <strong>Phân tích</strong> để AI nhận xét lịch sử tập <strong>${esc(ex.name)}</strong>`;
     }
 
     document.getElementById('btnAnalyze').disabled = !currentUser;
 }
 
 function aiCacheKey() {
-    return currentUser ? `ai_result_${currentUser.id}` : null;
+    return currentUser ? `ai_result_${currentUser.id}_${currentExercise}` : null;
 }
 
 function saveAICache(data) {
@@ -760,7 +970,10 @@ function clearAICache() {
 
 async function analyzeWithAI() {
     if (!supabaseClient || !currentUser) { openLoginModal(); return; }
-    if (sessions.length < 1) { showToast('Chưa có dữ liệu để phân tích'); return; }
+
+    const ex = EXERCISES[currentExercise] || EXERCISES.pullup;
+    const exSessions = sessions.filter(s => (s.exercise_type || 'pullup') === currentExercise);
+    if (exSessions.length < 1) { showToast(`Chưa có dữ liệu ${ex.name} để phân tích`); return; }
 
     const btn      = document.getElementById('btnAnalyze');
     const idleEl   = document.getElementById('aiIdle');
@@ -773,7 +986,7 @@ async function analyzeWithAI() {
     resultEl.style.display = 'none';
 
     try {
-        const days = groupByDay(sessions).slice(0, 90).map(d => ({ date: d.key, reps: d.reps }));
+        const days = groupByDay(exSessions).slice(0, 90).map(d => ({ date: d.key, reps: d.reps }));
         const { data, error } = await supabaseClient.functions.invoke('analyze-pullup', {
             body: { days },
         });

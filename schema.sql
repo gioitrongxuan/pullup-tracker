@@ -27,3 +27,11 @@ CREATE POLICY "Users can insert own sessions"
 CREATE POLICY "Users can delete own sessions"
     ON pullup_sessions FOR DELETE
     USING (auth.uid() = user_id);
+
+-- Migration: add exercise_type for multi-exercise support
+-- Run this if the column doesn't exist yet:
+ALTER TABLE pullup_sessions
+ADD COLUMN IF NOT EXISTS exercise_type VARCHAR(50) NOT NULL DEFAULT 'pullup';
+
+CREATE INDEX IF NOT EXISTS idx_pullup_sessions_exercise
+    ON pullup_sessions(user_id, exercise_type, created_at DESC);
