@@ -112,7 +112,11 @@ body {
     align-items: start;
 }
 @media (max-width: 780px) {
-    .workout-layout { grid-template-columns: 1fr; }
+    .workout-layout { grid-template-columns: 1fr; gap: 12px; }
+    .main { padding-top: 14px; padding-bottom: 24px; }
+    .counter-card { padding: 12px 16px 10px; }
+    .counter-value { font-size: 3.2rem; }
+    .instructions-card { display: none; }
 }
 
 /* ===== CAMERA ===== */
@@ -141,7 +145,8 @@ body {
 
 @media (max-width: 780px) {
     .camera-wrap {
-        aspect-ratio: 3/4;
+        aspect-ratio: unset;
+        height: 55dvh;
     }
 
     /* Scale canvas to fit without distortion (object-fit: contain equivalent) */
