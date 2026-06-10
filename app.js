@@ -1296,6 +1296,7 @@ document.getElementById('btnAnalyze').addEventListener('click', analyzeWithAI);
 // ===== DASHBOARD =====
 
 let dashPeriod = 'day';
+let dashExerciseFilter = 'all';
 
 function localDateKey(d) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -1360,13 +1361,16 @@ function sessionPeriodKey(isoStr, period) {
 }
 
 function renderDashStats() {
-    if (!sessions.length) {
+    const filtered = dashExerciseFilter === 'all'
+        ? sessions
+        : sessions.filter(s => s.exercise_type === dashExerciseFilter);
+    if (!filtered.length) {
         ['dashTotalReps','dashBestSession','dashAvgSession','dashTotalSessions'].forEach(id => {
             document.getElementById(id).textContent = '—';
         });
         return;
     }
-    const days  = groupByDay(sessions);
+    const days  = groupByDay(filtered);
     const total = days.reduce((s, d) => s + d.reps, 0);
     const best  = days.reduce((m, d) => Math.max(m, d.reps), 0);
     const avg   = days.length ? Math.round(total / days.length) : 0;
@@ -1381,9 +1385,16 @@ function renderDashChart() {
     const emptyEl  = document.getElementById('dashChartEmpty');
     const scrollEl = document.getElementById('dashChartScroll');
 
-    if (!sessions.length) {
+    const filtered = dashExerciseFilter === 'all'
+        ? sessions
+        : sessions.filter(s => s.exercise_type === dashExerciseFilter);
+
+    if (!filtered.length) {
         emptyEl.style.display  = '';
         scrollEl.style.display = 'none';
+        emptyEl.querySelector('p').textContent = dashExerciseFilter === 'all'
+            ? 'Chưa có dữ liệu để hiển thị'
+            : 'Chưa có dữ liệu cho bài tập này';
         return;
     }
 
@@ -1391,7 +1402,7 @@ function renderDashChart() {
 
     // Sum reps per bucket
     const totals = {};
-    sessions.forEach(s => {
+    filtered.forEach(s => {
         const k = sessionPeriodKey(s.created_at, dashPeriod);
         totals[k] = (totals[k] || 0) + s.reps;
     });
@@ -1501,8 +1512,12 @@ function renderHeatmap() {
     const scrollEl = document.getElementById('dashHeatmapScroll');
     if (!grid) return;
 
+    const filtered = dashExerciseFilter === 'all'
+        ? sessions
+        : sessions.filter(s => s.exercise_type === dashExerciseFilter);
+
     const dayMap = {};
-    sessions.forEach(s => {
+    filtered.forEach(s => {
         const k = localDateKey(new Date(s.created_at));
         dayMap[k] = (dayMap[k] || 0) + s.reps;
     });
@@ -1582,5 +1597,20 @@ document.querySelectorAll('.dash-tab').forEach(btn => {
         btn.setAttribute('aria-selected', 'true');
         dashPeriod = btn.dataset.period;
         renderDashChart();
+    });
+});
+
+document.querySelectorAll('.dash-ex-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.dash-ex-btn').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+        dashExerciseFilter = btn.dataset.exercise;
+        renderDashStats();
+        renderDashChart();
+        renderHeatmap();
     });
 });
