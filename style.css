@@ -1042,6 +1042,33 @@ body {
 .dash-tab:hover:not(.active) { color: var(--text-mid); background: var(--surface2); }
 .dash-tab.active { background: var(--accent); color: #0d0d18; border-color: transparent; }
 
+/* Exercise type filter */
+.dash-exercise-filter {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    margin-bottom: 12px;
+}
+.dash-exercise-filter::-webkit-scrollbar { display: none; }
+.dash-ex-btn {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.dash-ex-btn:hover:not(.active) { color: var(--text-mid); background: var(--surface2); }
+.dash-ex-btn.active { background: var(--accent); color: #0d0d18; border-color: transparent; }
+
 /* Chart area */
 .dash-chart-wrap {
     background: var(--surface);
