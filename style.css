@@ -167,6 +167,26 @@ body {
     border: 1px solid var(--border);
 }
 
+/* Golden "nộ khí" flash around the frame on each counted rep */
+.camera-wrap.power-surge {
+    animation: powerSurge 0.65s ease-out;
+}
+@keyframes powerSurge {
+    0% {
+        box-shadow: inset 0 0 0 0 rgba(255,210,80,0), 0 0 0 0 rgba(255,190,40,0);
+        border-color: var(--border);
+    }
+    25% {
+        box-shadow: inset 0 0 60px 8px rgba(255,210,80,0.55),
+                    0 0 40px 6px rgba(255,190,40,0.55);
+        border-color: rgba(255,205,70,0.9);
+    }
+    100% {
+        box-shadow: inset 0 0 0 0 rgba(255,210,80,0), 0 0 0 0 rgba(255,190,40,0);
+        border-color: var(--border);
+    }
+}
+
 #inputVideo {
     /* kept in DOM for MediaPipe but invisible */
     position: absolute;

@@ -118,6 +118,18 @@ const SQUAT_UP_THRESH    = 155;  // knee angle (deg)  > = standing (up position)
 const SITUP_DOWN_THRESH  = 140;  // hip angle (deg)   > = lying flat (down position)
 const SITUP_UP_THRESH    = 90;   // hip angle (deg)   < = sitting up (up position)
 
+// ===== SUPER SAIYAN AURA PARAMS =====
+// "Nộ khí" – a golden battle aura blazes around the athlete at the peak of each
+// rep, then bursts into a shockwave when the rep is counted. Pure motivation.
+const AURA_BODY_POINTS     = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+// Phase at which each exercise hits peak effort → the aura flares brightest.
+const AURA_SURGE_PHASE     = { pullup: 'UP', dip: 'UP', situp: 'UP', pushup: 'DOWN', squat: 'DOWN' };
+const AURA_IDLE_LEVEL      = 0.28;   // baseline glow while a tracked athlete rests
+const AURA_LIGHTNING_LEVEL = 0.85;   // intensity above which SSj2 sparks crackle
+const AURA_MIN_BODY_POINTS = 4;      // visible landmarks needed to place the aura
+const AURA_MAX_PARTICLES   = 140;    // cap on rising energy sparks (performance)
+const AURA_SHOCKWAVE_MS    = 650;    // lifetime of the per-rep shockwave ring
+
 // ===== STATE =====
 let supabaseClient = null;
 let currentUser    = null;
@@ -140,6 +152,15 @@ let sessions    = [];         // loaded from Supabase
 let pendingSave = null;       // { reps, duration_sec, exercise_type } waiting for auth/confirm
 
 let tapLongPressTimer = null;
+
+// ===== AURA STATE =====
+let auraLevel      = 0;     // eased intensity 0..1 driven by current phase
+let auraBurst      = 0;     // transient spike added on each counted rep (decays)
+let auraParticles  = [];    // rising energy sparks
+let auraShockwaves = [];    // expanding rings, one born per rep
+let auraLastT      = 0;     // perf timestamp of previous frame (for dt)
+let auraSprite     = null;  // cached radial-glow sprite, reused for every glow
+let lastAuraBody   = null;  // last measured body box (for shockwaves after fade)
 
 // ===== UTILS =====
 const pad = n => String(n).padStart(2, '0');
@@ -536,6 +557,7 @@ function countRep() {
     void el.offsetWidth; // reflow to restart animation
     el.classList.add('bump');
     triggerRepFlash();
+    igniteAuraBurst();
     updateTip(`🔥 Tốt lắm! ${repCount} lần rồi!`);
 }
 
@@ -591,6 +613,250 @@ function triggerRepFlash() {
     el.classList.add('pop');
 }
 
+// ===== SUPER SAIYAN AURA =====
+// All drawing runs inside the same mirrored, video-scaled canvas context as the
+// pose skeleton, so aura coordinates (landmark * canvas size) line up with the
+// athlete. Glows use additive ('lighter') blending so the body "powers up"
+// instead of being covered.
+
+function resetAura() {
+    auraLevel      = 0;
+    auraBurst      = 0;
+    auraParticles  = [];
+    auraShockwaves = [];
+    lastAuraBody   = null;
+}
+
+// One soft radial sprite, drawn (scaled/stretched) for every glow and spark.
+function getAuraSprite() {
+    if (auraSprite) return auraSprite;
+    const s = document.createElement('canvas');
+    s.width = s.height = 64;
+    const g = s.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0,    'rgba(255,255,238,1)');
+    grad.addColorStop(0.25, 'rgba(255,228,140,0.85)');
+    grad.addColorStop(0.55, 'rgba(255,160,45,0.35)');
+    grad.addColorStop(1,    'rgba(255,140,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    auraSprite = s;
+    return s;
+}
+
+// Bounding box + torso-weighted center of the athlete, in canvas pixels.
+function measureBody(lms, canvasW, canvasH) {
+    let minX = 1, minY = 1, maxX = 0, maxY = 0, count = 0;
+    for (const idx of AURA_BODY_POINTS) {
+        const p = lm(lms, idx);
+        if (!visible(p)) continue;
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+        count++;
+    }
+    if (count < AURA_MIN_BODY_POINTS) return null;
+
+    // Center the aura on the torso so it stays put even if limbs swing wide.
+    const torso = [lm(lms, 11), lm(lms, 12), lm(lms, 23), lm(lms, 24)].filter(visible);
+    let cx, cy;
+    if (torso.length >= 2) {
+        cx = torso.reduce((a, p) => a + p.x, 0) / torso.length;
+        cy = torso.reduce((a, p) => a + p.y, 0) / torso.length;
+    } else {
+        cx = (minX + maxX) / 2;
+        cy = (minY + maxY) / 2;
+    }
+    return {
+        cx: cx * canvasW,
+        cy: cy * canvasH,
+        halfW: Math.max((maxX - minX) * canvasW / 2, 30),
+        halfH: Math.max((maxY - minY) * canvasH / 2, 60),
+    };
+}
+
+function spawnAuraParticle(body) {
+    const ang = Math.random() * Math.PI * 2;
+    // Bias sparks toward the silhouette edge and lower body so flames lick upward.
+    const rx = body.halfW * (0.55 + Math.random() * 0.6);
+    const ry = body.halfH * (0.55 + Math.random() * 0.55);
+    const speed = body.halfH * (0.9 + Math.random() * 0.9);
+    const life  = 0.5 + Math.random() * 0.7;
+    auraParticles.push({
+        x: body.cx + Math.cos(ang) * rx,
+        y: body.cy + Math.sin(ang) * ry * 0.6 + body.halfH * 0.15,
+        vx: (Math.random() - 0.5) * body.halfW * 0.5,
+        vy: -speed,                       // negative = rising (y grows downward)
+        accY: -body.halfH * 0.6,          // accelerate upward like real flame
+        life,
+        maxLife: life,
+        size: body.halfW * 0.18 * (0.5 + Math.random() * 0.9),
+        wobble: Math.random() * Math.PI * 2,
+        wobSpeed: 6 + Math.random() * 6,
+    });
+}
+
+function updateAura(dt, intensity, body) {
+    if (body && intensity > 0.05) {
+        // Spawn rate scales with intensity; a burst adds a quick puff of sparks.
+        const rate = intensity * 26 * dt + (auraBurst > 0.3 ? auraBurst * 1.5 : 0);
+        let toSpawn = Math.floor(rate) + (Math.random() < rate % 1 ? 1 : 0);
+        toSpawn = Math.min(toSpawn, 8);
+        for (let i = 0; i < toSpawn && auraParticles.length < AURA_MAX_PARTICLES; i++) {
+            spawnAuraParticle(body);
+        }
+    }
+    for (let i = auraParticles.length - 1; i >= 0; i--) {
+        const p = auraParticles[i];
+        p.life -= dt;
+        if (p.life <= 0) { auraParticles.splice(i, 1); continue; }
+        p.vy += p.accY * dt;
+        p.wobble += dt * p.wobSpeed;
+        p.x += p.vx * dt + Math.sin(p.wobble) * 8 * dt;
+        p.y += p.vy * dt;
+    }
+}
+
+function drawAuraHalo(ctx, body, intensity, flicker) {
+    const sprite = getAuraSprite();
+    // Body halo – a tall golden glow enveloping the athlete.
+    const w = body.halfW * 2 * (1.7 + 0.5 * intensity) * flicker;
+    const h = body.halfH * 2 * (1.35 + 0.45 * intensity) * flicker;
+    ctx.globalAlpha = Math.min(0.6, 0.32 + 0.4 * intensity);
+    ctx.drawImage(sprite, body.cx - w / 2, body.cy - h / 2, w, h);
+
+    // Energy pillar rising above the head – the classic Super Saiyan beam.
+    const pw = body.halfW * 1.4 * flicker;
+    const ph = body.halfH * (1.6 + 1.2 * intensity) * flicker;
+    ctx.globalAlpha = Math.min(0.5, 0.2 + 0.4 * intensity);
+    ctx.drawImage(sprite, body.cx - pw / 2, body.cy - body.halfH - ph * 0.55, pw, ph);
+    ctx.globalAlpha = 1;
+}
+
+function drawAuraFlames(ctx, body, intensity, t, flicker) {
+    const spikes = 22;
+    const baseR  = Math.max(body.halfW, body.halfH * 0.7);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < spikes; i++) {
+        const a = (i / spikes) * Math.PI * 2;
+        // Pseudo-noise so each tongue of flame flickers independently.
+        const n   = 0.5 + 0.5 * Math.sin(t * 9 + i * 1.7) * Math.sin(t * 5 + i * 0.6);
+        const len = baseR * (0.25 + 0.75 * n) * intensity * flicker;
+        const ox  = body.cx + Math.cos(a) * body.halfW * 1.05;
+        const oy  = body.cy + Math.sin(a) * body.halfH * 1.05;
+        const tx  = ox + Math.cos(a) * len * 0.4;
+        const ty  = oy + Math.sin(a) * len * 0.4 - len;   // tips bend upward
+        ctx.strokeStyle = i % 5 === 0
+            ? `rgba(255,255,210,${0.5 * intensity})`
+            : `rgba(255,${150 + Math.floor(80 * n)},40,${0.4 * intensity})`;
+        ctx.lineWidth = (2 + 3 * intensity) * (0.6 + 0.4 * n);
+        ctx.beginPath();
+        ctx.moveTo(ox, oy);
+        ctx.quadraticCurveTo((ox + tx) / 2 + Math.sin(t * 7 + i) * 4, (oy + ty) / 2, tx, ty);
+        ctx.stroke();
+    }
+}
+
+function drawAuraParticles(ctx) {
+    const sprite = getAuraSprite();
+    for (const p of auraParticles) {
+        const k = p.life / p.maxLife;            // 1 → 0 over its lifetime
+        ctx.globalAlpha = Math.max(0, k * k) * 0.9;
+        const sz = p.size * (0.4 + 0.6 * k);     // shrink as it fades out
+        ctx.drawImage(sprite, p.x - sz / 2, p.y - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawAuraLightning(ctx, body, intensity) {
+    const alpha = Math.min(0.8, intensity - AURA_LIGHTNING_LEVEL);
+    const bolts = 1 + Math.floor(Math.random() * 2);
+    for (let b = 0; b < bolts; b++) {
+        const a0 = Math.random() * Math.PI * 2;
+        let x = body.cx + Math.cos(a0) * body.halfW * 0.7;
+        let y = body.cy + Math.sin(a0) * body.halfH * 0.7;
+        const segs = 5 + Math.floor(Math.random() * 4);
+        ctx.strokeStyle = `rgba(150,235,255,${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let s = 0; s < segs; s++) {
+            x += (Math.random() - 0.5) * body.halfW * 0.8;
+            y += -Math.random() * body.halfH * 0.5;   // crackle upward & outward
+            ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+}
+
+function drawAuraShockwaves(ctx, now) {
+    auraShockwaves = auraShockwaves.filter(s => now - s.born < AURA_SHOCKWAVE_MS);
+    if (!auraShockwaves.length || !lastAuraBody) return;
+
+    const b = lastAuraBody;
+    const baseR = Math.max(b.halfW, b.halfH);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const s of auraShockwaves) {
+        const k = (now - s.born) / AURA_SHOCKWAVE_MS;  // 0 → 1
+        ctx.strokeStyle = `rgba(255,225,120,${(1 - k) * 0.6})`;
+        ctx.lineWidth = 6 * (1 - k) + 1;
+        ctx.beginPath();
+        ctx.arc(b.cx, b.cy, (0.4 + k * 1.6) * baseR, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// Fired on every counted rep: flare the aura, puff sparks, launch a shockwave.
+function igniteAuraBurst() {
+    auraBurst = Math.min(1.6, auraBurst + 1.2);
+    auraShockwaves.push({ born: performance.now() });
+    const wrap = document.getElementById('cameraWrap');
+    if (wrap) {
+        wrap.classList.remove('power-surge');
+        void wrap.offsetWidth;
+        wrap.classList.add('power-surge');
+    }
+}
+
+function drawSuperSaiyanAura(ctx, lms, canvasW, canvasH) {
+    const now = performance.now();
+    const dt  = auraLastT ? Math.min(0.05, (now - auraLastT) / 1000) : 0.016;
+    auraLastT = now;
+    const t   = now / 1000;
+
+    // Ease intensity toward the target set by the current exercise phase.
+    let target = 0;
+    if (isRunning && poseActive) {
+        target = AURA_IDLE_LEVEL;
+        const surgePhase = AURA_SURGE_PHASE[currentExercise] || 'UP';
+        if (pullPhase === surgePhase) target = 1;
+    }
+    auraLevel += (target - auraLevel) * Math.min(1, dt * 6);
+    auraBurst *= Math.exp(-dt * 3.2);
+    const intensity = auraLevel + auraBurst;
+
+    const body = measureBody(lms, canvasW, canvasH);
+    if (body) lastAuraBody = body;
+    updateAura(dt, body ? intensity : 0, body);
+
+    if (body && intensity >= 0.03) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const flicker = 1 + 0.07 * Math.sin(t * 31) + 0.05 * Math.sin(t * 53 + 1.3);
+        drawAuraHalo(ctx, body, intensity, flicker);
+        drawAuraFlames(ctx, body, intensity, t, flicker);
+        drawAuraParticles(ctx);
+        if (intensity > AURA_LIGHTNING_LEVEL) drawAuraLightning(ctx, body, intensity);
+        ctx.restore();
+    }
+
+    // Shockwaves outlive the fading aura, so draw them regardless of intensity.
+    drawAuraShockwaves(ctx, now);
+}
+
 // ===== MEDIAPIPE INIT =====
 
 function setupCanvas() {
@@ -643,6 +909,9 @@ function initPose() {
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
         if (results.poseLandmarks) {
+            // Blaze the Super Saiyan aura behind the skeleton so lines stay crisp.
+            drawSuperSaiyanAura(ctx, results.poseLandmarks, canvas.width, canvas.height);
+
             if (typeof drawConnectors === 'function' && typeof POSE_CONNECTIONS !== 'undefined') {
                 drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {
                     color: 'rgba(0,229,212,0.65)',
@@ -742,6 +1011,7 @@ function startWorkout() {
     pullPhase       = null;
     seenDownBeforeUp = false;
     posBuffer       = [];
+    resetAura();
     isRunning    = true;
     sessionStart = Date.now();
 
